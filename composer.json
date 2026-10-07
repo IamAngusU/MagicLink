@@ -1,0 +1,19 @@
+{
+  "name": "iamangusu/magic-link",
+  "description": "Drop-in, self-hosted magic-link authentication for PHP shared hosting and VPS deployments.",
+  "type": "project",
+  "require": {
+    "php": ">=8.2",
+    "ext-json": "*",
+    "ext-pdo": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "IamAngusU\\MagicLink\\": "src/"
+    }
+  },
+  "scripts": {
+    "check": "php bin/check.php",
+    "test": "php tests/run.php"
+  }
+}

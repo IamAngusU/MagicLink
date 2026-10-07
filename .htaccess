@@ -1,0 +1,14 @@
+Options -Indexes
+RewriteEngine On
+
+RewriteRule ^(?:bin|config|docs|resources|src|storage|templates|tests|vendor)(?:/|$) - [F,L,NC]
+RewriteRule (^|/)\. - [F,L]
+
+<FilesMatch "^(?:bootstrap\.php|composer\.(?:json|lock)|README.*|SECURITY\.md)$">
+    Require all denied
+</FilesMatch>
+
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -f [OR]
+RewriteCond %{DOCUMENT_ROOT}/public/$1 -d
+RewriteRule ^(.+)$ public/$1 [L]
+RewriteRule ^ public/index.php [L,QSA]

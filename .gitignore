@@ -1,0 +1,7 @@
+/.env
+/storage/*
+!/storage/.gitkeep
+!/storage/.htaccess
+/vendor/
+/dist/
+/.phpunit.cache/

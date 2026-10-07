@@ -1,0 +1,10 @@
+{
+  "requested": "Sicherer Link wird vorbereitet.",
+  "waiting": "Prüfe dein Postfach. Diese Seite wechselt nach der Bestätigung automatisch.",
+  "verified": "Bestätigt. Deine Sitzung ist jetzt aktiv.",
+  "expired": "Der Link ist abgelaufen. Fordere einen neuen an.",
+  "replayed": "Der Link wurde bereits verwendet.",
+  "rate_limited": "Zu viele Versuche. Warte kurz und versuche es später erneut.",
+  "denied": "Wenn die Adresse freigeschaltet ist, wurde ein Link versendet.",
+  "failed": "Der Link konnte nicht bestätigt werden. Fordere einen neuen an."
+}

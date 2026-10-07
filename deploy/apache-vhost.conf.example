@@ -1,0 +1,15 @@
+<VirtualHost *:443>
+    ServerName login.example.com
+    DocumentRoot /var/www/magiclink/public
+
+    <Directory /var/www/magiclink/public>
+        AllowOverride All
+        Options -Indexes
+        Require all granted
+    </Directory>
+
+    <Directory /var/www/magiclink>
+        AllowOverride None
+        Require all denied
+    </Directory>
+</VirtualHost>
