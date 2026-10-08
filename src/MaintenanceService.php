@@ -8,7 +8,12 @@ use Throwable;
 
 final class MaintenanceService
 {
-    public function __construct(private PDO $pdo, private Config $config) {}
+    private WriteTransaction $transaction;
+
+    public function __construct(private PDO $pdo, private Config $config)
+    {
+        $this->transaction = new WriteTransaction($pdo);
+    }
 
     /** @return array<string,int> */
     public function runIfDue(int $batch, bool $force = false): array
@@ -27,14 +32,12 @@ final class MaintenanceService
             $claim = $this->pdo->prepare('UPDATE maintenance_state SET last_run = ? WHERE name = ? AND last_run <= ?');
             $claim->execute([$now, 'cleanup', $force ? PHP_INT_MAX : $now - $interval]);
             if ($claim->rowCount() !== 1) {
-                $this->pdo->commit();
+                $this->transaction->commit();
                 return ['links' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
             }
-            $this->pdo->commit();
+            $this->transaction->commit();
         } catch (Throwable $error) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
+            $this->transaction->rollback();
             throw $error;
         }
 
@@ -58,10 +61,6 @@ final class MaintenanceService
 
     private function beginWrite(): void
     {
-        if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-            $this->pdo->exec('BEGIN IMMEDIATE');
-        } else {
-            $this->pdo->beginTransaction();
-        }
+        $this->transaction->begin();
     }
 }

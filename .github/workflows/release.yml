@@ -13,6 +13,7 @@ permissions: {}
 jobs:
   build:
     if: github.repository == 'angusu-de/MagicLink-CI'
+    environment: private-source
     runs-on: ubuntu-latest
     permissions:
       contents: read

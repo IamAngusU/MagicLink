@@ -18,6 +18,7 @@ jobs:
   php:
     if: github.repository == 'angusu-de/MagicLink-CI'
     name: PHP ${{ matrix.php }} · SQLite
+    environment: private-source
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,12 +51,13 @@ jobs:
   mysql:
     if: github.repository == 'angusu-de/MagicLink-CI'
     name: PHP 8.4 · MySQL 8.4
+    environment: private-source
     runs-on: ubuntu-latest
     permissions:
       contents: read
     services:
       mysql:
-        image: mysql:8.4
+        image: mysql:8.4@sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242
         env:
           MYSQL_DATABASE: magic_link_test
           MYSQL_USER: magic_link
@@ -100,6 +102,7 @@ jobs:
   package:
     if: github.repository == 'angusu-de/MagicLink-CI'
     name: Source ${{ inputs.source_sha }} · package
+    environment: private-source
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -146,6 +149,7 @@ jobs:
   workflow-security:
     if: github.repository == 'angusu-de/MagicLink-CI'
     name: Workflow security
+    environment: private-source
     runs-on: ubuntu-latest
     permissions:
       contents: read

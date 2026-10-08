@@ -10,7 +10,12 @@ use Throwable;
 
 final class MagicLinkService
 {
-    public function __construct(private PDO $pdo, private Config $config, private Crypto $crypto) {}
+    private WriteTransaction $transaction;
+
+    public function __construct(private PDO $pdo, private Config $config, private Crypto $crypto)
+    {
+        $this->transaction = new WriteTransaction($pdo);
+    }
 
     /** @return array{selector:string,state:string,expires_at:int,masked_email:string} */
     public function request(string $email, string $sessionBinding, string $ipAddress): array
@@ -25,7 +30,7 @@ final class MagicLinkService
             $this->rateLimit('request|ip|' . $ipHash, $this->config->int('MAGICLINK_IP_LIMIT', 10), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
             if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
                 $this->audit('magic_link.invalid_request', $emailLookup, $ipHash, []);
-                $this->pdo->commit();
+                $this->transaction->commit();
                 throw new \InvalidArgumentException('Please enter a valid email address.');
             }
 
@@ -70,11 +75,9 @@ final class MagicLinkService
                 $now,
             ]);
             $this->audit($deliverable ? 'magic_link.requested' : 'magic_link.denied', $emailLookup, $ipHash, ['selector' => $selector]);
-            $this->pdo->commit();
+            $this->transaction->commit();
         } catch (Throwable $error) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
+            $this->transaction->rollback();
             throw $error;
         }
 
@@ -152,7 +155,7 @@ final class MagicLinkService
             $window = $this->config->int('MAGICLINK_EXCHANGE_WINDOW', 900);
             $this->rateLimit('exchange|ip|' . $ipHash, $this->config->int('MAGICLINK_EXCHANGE_IP_LIMIT', 60), $window, $now);
             if (!preg_match('/^ml_[a-f0-9]{24}$/D', $selector) || strlen($token) < 40 || strlen($token) > 100) {
-                $this->pdo->commit();
+                $this->transaction->commit();
                 throw new InvalidLink('The link is invalid or expired.');
             }
             $this->rateLimit('exchange|selector|' . $selectorHash, $this->config->int('MAGICLINK_EXCHANGE_SELECTOR_LIMIT', 10), $window, $now);
@@ -161,12 +164,12 @@ final class MagicLinkService
             $statement->execute([$selector]);
             $row = $statement->fetch();
             if (!is_array($row)) {
-                $this->pdo->commit();
+                $this->transaction->commit();
                 throw new InvalidLink('The link is invalid or expired.');
             }
             if ($row['consumed_at'] !== null) {
                 $this->audit('magic_link.replayed', (string) $row['email_lookup'], $ipHash, ['selector' => $selector]);
-                $this->pdo->commit();
+                $this->transaction->commit();
                 throw new InvalidLink('The link was already used.');
             }
             $valid = (int) $row['deliverable'] === 1
@@ -174,7 +177,7 @@ final class MagicLinkService
                 && hash_equals((string) $row['token_hash'], $this->crypto->hmac('token', $token));
             if (!$valid) {
                 $this->audit('magic_link.rejected', (string) $row['email_lookup'], $ipHash, ['selector' => $selector]);
-                $this->pdo->commit();
+                $this->transaction->commit();
                 throw new InvalidLink('The link is invalid or expired.');
             }
             $consume = $this->pdo->prepare('UPDATE magic_links SET consumed_at = ?, verified_at = ? WHERE selector = ? AND consumed_at IS NULL');
@@ -184,12 +187,10 @@ final class MagicLinkService
             }
             $this->audit('magic_link.verified', (string) $row['email_lookup'], $ipHash, ['selector' => $selector]);
             $email = $this->crypto->decrypt((string) $row['email_cipher']);
-            $this->pdo->commit();
+            $this->transaction->commit();
             return ['state' => MagicLinkState::Verified->value, 'email' => $email];
         } catch (Throwable $error) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
+            $this->transaction->rollback();
             throw $error;
         }
     }
@@ -239,11 +240,7 @@ final class MagicLinkService
 
     private function beginWrite(): void
     {
-        if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-            $this->pdo->exec('BEGIN IMMEDIATE');
-        } else {
-            $this->pdo->beginTransaction();
-        }
+        $this->transaction->begin();
     }
 
     private function maskEmail(string $email): string

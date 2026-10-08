@@ -5,17 +5,22 @@ namespace IamAngusU\MagicLink\Mail;
 
 use IamAngusU\MagicLink\Config;
 use IamAngusU\MagicLink\Crypto;
+use IamAngusU\MagicLink\WriteTransaction;
 use PDO;
 use Throwable;
 
 final class OutboxWorker
 {
+    private WriteTransaction $transaction;
+
     public function __construct(
         private PDO $pdo,
         private Config $config,
         private Crypto $crypto,
         private MagicLinkMessage $message,
-    ) {}
+    ) {
+        $this->transaction = new WriteTransaction($pdo);
+    }
 
     /** @return array{claimed:int,sent:int,retried:int,failed:int} */
     public function run(int $limit): array
@@ -79,11 +84,9 @@ final class OutboxWorker
             foreach ($ids as $id) {
                 $claim->execute([$lockToken, $now, $id]);
             }
-            $this->pdo->commit();
+            $this->transaction->commit();
         } catch (Throwable $error) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
-            }
+            $this->transaction->rollback();
             throw $error;
         }
 
@@ -123,10 +126,6 @@ final class OutboxWorker
 
     private function beginWrite(): void
     {
-        if ($this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-            $this->pdo->exec('BEGIN IMMEDIATE');
-        } else {
-            $this->pdo->beginTransaction();
-        }
+        $this->transaction->begin();
     }
 }
