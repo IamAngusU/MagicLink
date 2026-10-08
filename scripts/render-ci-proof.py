@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 
 BADGE_DESIGN_SOURCE = "IamAngusU/Badges"
-BADGE_DESIGN_SOURCE_COMMIT = "0017cbb65463bb2e19f6e774b418dd0126dc0e93"
+BADGE_DESIGN_SOURCE_COMMIT = "3ce6d01e32c7422e74755a37f86ba9478e47aafe"
 SOURCE_JOB = re.compile(r"^Source ([0-9a-f]{40}) · package$")
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "docs" / "assets" / "ci-proof-template.svg"
 
@@ -60,7 +60,7 @@ def load_jobs(repository: str, run_id: str) -> list[dict]:
 def source_sha(jobs: list[dict]) -> str:
     matches = [match.group(1) for job in jobs if (match := SOURCE_JOB.fullmatch(str(job.get("name") or "")))]
     if len(matches) != 1:
-        raise SystemExit("CI run does not identify exactly one private source commit")
+        raise SystemExit("CI run does not identify exactly one source commit")
     return matches[0]
 
 
@@ -93,15 +93,15 @@ def render_segments(statuses: list[str]) -> str:
     return "\n    ".join(lines)
 
 
-def render_svg(jobs: list[dict], private_sha: str, run_number: str) -> str:
+def render_svg(jobs: list[dict], source_commit: str, run_number: str) -> str:
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     if 'data-badge-system="IamAngusU/Badges"' not in template or 'id="proof-metric"' not in template or 'id="proof-segments"' not in template:
         raise SystemExit("CI proof template is missing badge-system anchors")
     passed = sum(1 for job in jobs if job.get("conclusion") == "success")
     metric = f"{passed}/{len(jobs)}" if jobs else "0/0"
     title = (
-        f"MagicLink public CI harness: {metric} jobs passed for private source {private_sha[:7]}, "
-        f"run #{run_number}; read-only deploy key, same maintainer, not a third-party audit."
+        f"MagicLink public CI harness: {metric} jobs passed for source {source_commit[:7]}, "
+        f"run #{run_number}; exact public commit, same maintainer, not a third-party audit."
     )
     escaped = html.escape(title, quote=True)
     svg = re.sub(r'aria-label="[^"]*"', f'aria-label="{escaped}"', template, count=1)
@@ -120,18 +120,18 @@ def main() -> None:
     run_url = required("PROOF_RUN_URL")
     harness_sha = required("PROOF_HARNESS_SHA")
     jobs = load_jobs(repository, run_id)
-    private_sha = source_sha(jobs)
-    Path(sys.argv[1]).write_text(render_svg(jobs, private_sha, run_number), encoding="utf-8")
+    source_commit = source_sha(jobs)
+    Path(sys.argv[1]).write_text(render_svg(jobs, source_commit, run_number), encoding="utf-8")
     evidence = {
-        "claim": "public source-free CI harness; read-only deploy key; same maintainer; not a third-party audit",
+        "claim": "separate public CI harness; exact public commit; same maintainer; not a third-party audit",
         "badge_design_source": BADGE_DESIGN_SOURCE,
         "badge_design_source_commit": BADGE_DESIGN_SOURCE_COMMIT,
         "repository": repository,
         "run_id": int(run_id),
         "run_number": int(run_number),
         "run_url": run_url,
-        "private_source_repository": "IamAngusU/MagicLink",
-        "private_source_sha": private_sha,
+        "source_repository": "IamAngusU/MagicLink",
+        "source_sha": source_commit,
         "harness_sha": harness_sha,
         "jobs_total": len(jobs),
         "jobs_success": sum(1 for job in jobs if job.get("conclusion") == "success"),

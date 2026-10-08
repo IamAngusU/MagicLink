@@ -52,7 +52,7 @@ to the browser that presented the secret.
 
 ## Reporting
 
-Use the private repository's GitHub Security Advisory flow. Include the affected
-commit, deployment mode, reproduction steps and whether a real token or email
-address was exposed. Do not place live tokens, SMTP credentials or `.env`
-contents in an issue.
+Use GitHub's private Security Advisory flow for this repository. Include the
+affected commit, deployment mode, reproduction steps and whether a real token
+or email address was exposed. Do not place live tokens, SMTP credentials or
+`.env` contents in an issue.

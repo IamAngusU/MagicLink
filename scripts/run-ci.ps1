@@ -31,5 +31,4 @@ try {
     [Environment]::SetEnvironmentVariable("GH_TOKEN", $previousToken, "Process")
 }
 
-Write-Host "CI requested for private source $($head.Substring(0, 12))."
-
+Write-Host "CI requested for source $($head.Substring(0, 12))."

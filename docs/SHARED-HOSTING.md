@@ -2,7 +2,7 @@
 
 ## Fast path
 
-1. Download `magiclink-shared-hosting.zip` from the latest private GitHub release.
+1. Download `magiclink-shared-hosting.zip` from the latest GitHub release.
 2. Extract it into a dedicated domain or subdomain directory.
 3. With SSH or a hosting terminal, run `php bin/install.php` and answer the
    guided prompts. Without a shell, copy `.env.example` to `.env`.

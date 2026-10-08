@@ -14,12 +14,13 @@
   <a href="composer.json"><img src="docs/assets/readme/repo-runtime.svg" height="40" alt="PHP 8.2 oder neuer"></a>
   <a href="docs/SHARED-HOSTING.md"><img src="docs/assets/readme/repo-hosting.svg" height="40" alt="Shared-Hosting- und VPS-Deployment"></a>
   <a href="docs/API.de.md"><img src="docs/assets/readme/repo-api.svg" height="40" alt="Versionierte Headless API"></a>
+  <a href="LICENSE"><img src="docs/assets/readme/repo-license.svg" height="40" alt="MIT-lizenziert"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="54" alt="Aktueller öffentlicher MagicLink-CI-Nachweis"></a>
 </p>
-<p align="center"><sub>Öffentliche, quellcodefreie CI auf einem getrennten Account, gleicher Maintainer. Das Badge belegt die veröffentlichten Jobs für den genannten Commit; es ist kein unabhängiges Audit.</sub></p>
+<p align="center"><sub>Öffentliche CI auf einem getrennten Account, gleicher Maintainer. Das Badge belegt die veröffentlichten Jobs für den genannten Commit; es ist kein unabhängiges Audit.</sub></p>
 
 <p align="center"><a href="#schnellstart">Schnellstart</a> · <a href="#warum-magiclink">Warum MagicLink?</a> · <a href="#deine-eigene-ui">Eigene UI</a> · <a href="#deine-mail-dein-design">Eigene Mail</a> · <a href="#vom-shared-hosting-zum-vps">Skalierung</a> · <a href="#sicherheitsgrenze">Security</a> · <a href="docs/API.de.md">Doku</a></p>
 
@@ -144,4 +145,4 @@ Das klickbare Stack-Marquee unten öffnet immer [`IamAngusU/icon-marquee`](https
 
 <p align="center"><a href="https://github.com/IamAngusU/icon-marquee"><img src="docs/assets/stack-marquee.svg" width="780" alt="PHP, JavaScript, HTML, CSS, SQLite, MySQL, Apache und Nginx"></a></p>
 
-<p align="center"><sub>Noch wurde keine öffentliche Softwarelizenz erteilt. Das aktuelle Link-Zeichen bleibt ein Platzhalter, bis das finale Logo vorliegt.</sub></p>
+<p align="center"><sub>MIT-lizenziert. Siehe <a href="LICENSE">LICENSE</a>. Das aktuelle Link-Zeichen bleibt ein Platzhalter, bis das finale Logo vorliegt.</sub></p>

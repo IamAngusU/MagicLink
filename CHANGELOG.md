@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — 2026-10-08
+
+- Licensed MagicLink under MIT and prepared the canonical repository and
+  release package for public use.
+- Rebuilt the concise bilingual front door around a direct quick start,
+  factual repository badges, terminal and protocol visuals, and clear product
+  boundaries.
+- Removed the public CI mirror's private-source and deploy-key dependency while
+  preserving immutable-commit checks and machine-readable proof.
+
 ## 0.4.0 — 2026-10-08
 
 - Added safe, local DE/EN mail-template packs, strict placeholder rendering and

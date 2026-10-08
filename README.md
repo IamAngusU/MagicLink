@@ -14,12 +14,13 @@
   <a href="composer.json"><img src="docs/assets/readme/repo-runtime.svg" height="40" alt="PHP 8.2 or newer"></a>
   <a href="docs/SHARED-HOSTING.md"><img src="docs/assets/readme/repo-hosting.svg" height="40" alt="Shared-hosting and VPS deployment"></a>
   <a href="docs/API.md"><img src="docs/assets/readme/repo-api.svg" height="40" alt="Versioned headless API"></a>
+  <a href="LICENSE"><img src="docs/assets/readme/repo-license.svg" height="40" alt="MIT licensed"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="54" alt="Live public MagicLink CI proof"></a>
 </p>
-<p align="center"><sub>Public source-free CI on a separate account, same maintainer. The badge proves the named commit passed the published jobs; it is not a third-party audit.</sub></p>
+<p align="center"><sub>Public CI on a separate account, same maintainer. The badge proves the named commit passed the published jobs; it is not a third-party audit.</sub></p>
 
 <p align="center"><a href="#quick-start">Quick start</a> · <a href="#why-magiclink">Why MagicLink?</a> · <a href="#bring-your-own-ui">Your UI</a> · <a href="#make-the-mail-yours">Your mail</a> · <a href="#from-shared-hosting-to-vps">Scale</a> · <a href="#security-boundary">Security</a> · <a href="docs/API.md">Docs</a></p>
 
@@ -140,4 +141,4 @@ The clickable stack marquee below always opens [`IamAngusU/icon-marquee`](https:
 
 <p align="center"><a href="https://github.com/IamAngusU/icon-marquee"><img src="docs/assets/stack-marquee.svg" width="780" alt="PHP, JavaScript, HTML, CSS, SQLite, MySQL, Apache and Nginx"></a></p>
 
-<p align="center"><sub>No public software license has been granted yet. The current link mark is a placeholder until the final logo is supplied.</sub></p>
+<p align="center"><sub>MIT licensed. See <a href="LICENSE">LICENSE</a>. The current link mark is a placeholder until the final logo is supplied.</sub></p>

@@ -20,4 +20,4 @@ GH_TOKEN="$token" gh workflow run ci.yml \
   --ref main \
   -f "source_sha=$head"
 unset token
-printf 'CI requested for private source %.12s.\n' "$head"
+printf 'CI requested for source %.12s.\n' "$head"

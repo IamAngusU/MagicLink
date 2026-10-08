@@ -2,6 +2,7 @@
   "name": "iamangusu/magic-link",
   "description": "Drop-in, self-hosted magic-link authentication for PHP shared hosting and VPS deployments.",
   "type": "project",
+  "license": "MIT",
   "require": {
     "php": ">=8.2",
     "ext-json": "*",
