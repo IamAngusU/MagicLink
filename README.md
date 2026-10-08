@@ -2,6 +2,10 @@
   <img src="docs/assets/magiclink-badge.svg" height="58" alt="MagicLink — self-hosted passwordless authentication">
 </p>
 
+<p align="center">
+  <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="58" alt="MagicLink public CI proof"></a>
+</p>
+
 <h1 align="center">MagicLink</h1>
 
 <p align="center"><strong>Passwortlose Anmeldung, die auf Shared Hosting genauso klein startet wie auf einem VPS – mit eigener UI, eigener Config und ohne sichtbaren Infrastrukturballast.</strong></p>
