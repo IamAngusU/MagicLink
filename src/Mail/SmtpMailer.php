@@ -62,7 +62,7 @@ final class SmtpMailer implements Mailer
             $this->command('DATA', [354]);
             $message = $this->message($to, $from, $subject, $html, $plain);
             $message = preg_replace('/(?m)^\./', '..', str_replace(["\r\n", "\r", "\n"], "\r\n", $message)) ?? $message;
-            fwrite($stream, $message . "\r\n.\r\n");
+            $this->write($message . "\r\n.\r\n");
             $this->expect([250]);
             $this->command('QUIT', [221]);
         } finally {
@@ -97,8 +97,25 @@ final class SmtpMailer implements Mailer
         if (!is_resource($this->stream) || preg_match('/[\r\n]/', $command)) {
             throw new RuntimeException('Invalid SMTP command.');
         }
-        fwrite($this->stream, $command . "\r\n");
+        $this->write($command . "\r\n");
         $this->expect($codes);
+    }
+
+    private function write(string $payload): void
+    {
+        if (!is_resource($this->stream)) {
+            throw new RuntimeException('SMTP stream is unavailable.');
+        }
+        $offset = 0;
+        $length = strlen($payload);
+        while ($offset < $length) {
+            $written = fwrite($this->stream, substr($payload, $offset));
+            if ($written === false || $written === 0) {
+                $meta = stream_get_meta_data($this->stream);
+                throw new RuntimeException(!empty($meta['timed_out']) ? 'SMTP write timed out.' : 'SMTP write failed.');
+            }
+            $offset += $written;
+        }
     }
 
     /** @param list<int> $codes */
@@ -108,12 +125,17 @@ final class SmtpMailer implements Mailer
             throw new RuntimeException('SMTP stream is unavailable.');
         }
         $response = '';
+        $lines = 0;
         do {
             $line = fgets($this->stream, 2048);
             if ($line === false) {
                 throw new RuntimeException('SMTP server closed the connection.');
             }
             $response .= $line;
+            $lines++;
+            if ($lines > 100 || strlen($response) > 65536) {
+                throw new RuntimeException('SMTP response exceeded the safety limit.');
+            }
         } while (isset($line[3]) && $line[3] === '-');
         $code = (int) substr($response, 0, 3);
         if (!in_array($code, $codes, true)) {

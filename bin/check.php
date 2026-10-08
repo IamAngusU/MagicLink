@@ -17,5 +17,4 @@ foreach ($iterator as $file) {
     $output = [];
 }
 if ($failed) exit(1);
-passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/tests/run.php'), $status);
-exit($status);
+require $root . '/tests/run.php';

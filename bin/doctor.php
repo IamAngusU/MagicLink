@@ -2,13 +2,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-spl_autoload_register(static function (string $class) use ($root): void {
-    $prefix = 'IamAngusU\\MagicLink\\';
-    if (str_starts_with($class, $prefix)) {
-        $path = $root . '/src/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
-        if (is_file($path)) require $path;
-    }
-});
+require $root . '/autoload.php';
 
 try {
     $config = IamAngusU\MagicLink\Config::load($root);
@@ -21,10 +15,14 @@ try {
     ];
     foreach ($checks as $label => $passed) echo ($passed ? '[ok]   ' : '[fail] ') . $label . PHP_EOL;
     if (in_array(false, $checks, true)) exit(1);
-    $database = IamAngusU\MagicLink\Database::connect($config);
-    $database->migrate();
+    $kernel = IamAngusU\MagicLink\Kernel::boot($root);
     $config->appKey();
+    $pending = (int) $kernel->database->pdo()->query("SELECT COUNT(*) FROM mail_outbox WHERE status = 'pending'")->fetchColumn();
     echo "[ok]   database migration and app key\n";
+    echo sprintf("[info] queue pending=%d, worker batch=%d, state batch=%d, maintenance batch=%d\n", $pending, $kernel->tuning->workerBatch(), $kernel->tuning->stateBatchMax(), $kernel->tuning->maintenanceBatch());
+    if (!$config->bool('MAIL_AUTO_DISPATCH', true)) {
+        echo "[info] MAIL_AUTO_DISPATCH is off; run bin/worker.php from cron or a service.\n";
+    }
 } catch (Throwable $error) {
     fwrite(STDERR, '[fail] ' . $error->getMessage() . PHP_EOL);
     exit(1);

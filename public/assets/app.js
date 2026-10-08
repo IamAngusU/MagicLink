@@ -25,10 +25,10 @@
       })
         .then(async (response) => {
           const payload = await response.json();
-          if (!response.ok || !payload.ok) throw new Error(payload.message || "Link rejected");
-          message.textContent = payload.message;
+          if (!response.ok || !payload.ok) throw new Error(payload.error?.message || "Link rejected");
+          message.textContent = payload.data.message;
           exchange.dataset.confirmed = "true";
-          setTimeout(() => location.replace(payload.redirect), 360);
+          setTimeout(() => location.replace(payload.data.redirect), 360);
         })
         .catch((error) => {
           message.textContent = error.message;
@@ -40,8 +40,11 @@
   const waiting = document.querySelector("[data-waiting]");
   if (waiting) {
     const message = waiting.querySelector("[data-state-message]");
+    const stateCode = waiting.querySelector("[data-state-code]");
     const countdown = waiting.querySelector("[data-countdown]");
+    let pollAfter = Math.max(500, Number(waiting.dataset.pollAfter) || 2500);
     let timer = 0;
+    let stopped = false;
 
     const tick = () => {
       const remaining = Number(countdown.dataset.expiresAt) * 1000 - Date.now();
@@ -52,6 +55,7 @@
     };
 
     const poll = async () => {
+      if (stopped) return;
       clearTimeout(timer);
       try {
         const response = await fetch(waiting.dataset.stateUrl, {
@@ -59,23 +63,48 @@
           headers: { Accept: "application/json" },
         });
         const payload = await response.json();
-        message.textContent = payload.message;
-        if (payload.verified && payload.redirect) {
-          waiting.dataset.confirmed = "true";
-          location.replace(payload.redirect);
-          return;
+        if (!response.ok || !payload.ok) {
+          if (response.status === 429) {
+            pollAfter = Math.max(pollAfter, Number(payload.meta?.poll_after_ms) || 0);
+          } else {
+            throw new Error(payload.error?.message || "State unavailable");
+          }
+        } else {
+          message.textContent = payload.data.message;
+          stateCode.textContent = payload.data.state;
+          pollAfter = Math.max(500, Number(payload.meta?.poll_after_ms) || pollAfter);
+          if (payload.data.terminal) {
+            stopped = true;
+            waiting.dataset.state = payload.data.state;
+            if (payload.data.verified) waiting.dataset.confirmed = "true";
+            return;
+          }
         }
       } catch (_) {
         // A short network interruption must not destroy the waiting state.
       }
-      timer = setTimeout(poll, document.hidden ? 5000 : 1400);
+      if (!stopped) {
+        timer = setTimeout(poll, document.hidden ? Math.max(5000, pollAfter) : pollAfter);
+      }
     };
 
     tick();
-    setInterval(tick, 1000);
-    poll();
+    const clock = setInterval(() => {
+      tick();
+      if (Number(countdown.dataset.expiresAt) * 1000 <= Date.now()) {
+        clearInterval(clock);
+        if (!stopped) {
+          stopped = true;
+          stateCode.textContent = "expired";
+        }
+      }
+    }, 1000);
+    timer = setTimeout(poll, Math.min(600, pollAfter));
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) poll();
+      if (!document.hidden && !stopped) {
+        clearTimeout(timer);
+        timer = setTimeout(poll, 100);
+      }
     });
   }
 })();

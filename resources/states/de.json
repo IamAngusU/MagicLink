@@ -1,7 +1,7 @@
 {
   "requested": "Sicherer Link wird vorbereitet.",
-  "waiting": "Prüfe dein Postfach. Diese Seite wechselt nach der Bestätigung automatisch.",
-  "verified": "Bestätigt. Deine Sitzung ist jetzt aktiv.",
+  "waiting": "Prüfe dein Postfach. Diese Seite zeigt dir die Bestätigung live an.",
+  "verified": "Bestätigt. Die Sitzung ist auf dem Gerät mit dem Link aktiv.",
   "expired": "Der Link ist abgelaufen. Fordere einen neuen an.",
   "replayed": "Der Link wurde bereits verwendet.",
   "rate_limited": "Zu viele Versuche. Warte kurz und versuche es später erneut.",

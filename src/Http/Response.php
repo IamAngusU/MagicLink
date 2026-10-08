@@ -15,9 +15,10 @@ final class Response
     }
 
     /** @param array<string,mixed> $payload */
-    public static function json(array $payload, int $status = 200): self
+    /** @param array<string,string> $headers */
+    public static function json(array $payload, int $status = 200, array $headers = []): self
     {
-        return new self(json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), $status, ['Content-Type' => 'application/json; charset=UTF-8']);
+        return new self(json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $status, ['Content-Type' => 'application/json; charset=UTF-8'] + $headers);
     }
 
     public static function redirect(string $location, int $status = 303): self
@@ -26,18 +27,62 @@ final class Response
     }
 
     /** @param array<string,string> $headers */
+    public static function noContent(array $headers = []): self
+    {
+        return new self('', 204, $headers);
+    }
+
+    /** @param array<string,string> $headers */
     public function withHeaders(array $headers): self
     {
         return new self($this->body, $this->status, $headers + $this->headers);
     }
 
-    public function send(): never
+    public function status(): int
+    {
+        return $this->status;
+    }
+
+    public function body(): string
+    {
+        return $this->body;
+    }
+
+    /** @return array<string,string> */
+    public function headers(): array
+    {
+        return $this->headers;
+    }
+
+    public function send(?callable $afterResponse = null): never
     {
         http_response_code($this->status);
-        foreach ($this->headers as $name => $value) {
+        $headers = ['Content-Length' => (string) strlen($this->body)] + $this->headers;
+        foreach ($headers as $name => $value) {
             header($name . ': ' . $value);
         }
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        if ($afterResponse !== null) {
+            ignore_user_abort(true);
+        }
         echo $this->body;
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } else {
+            while (ob_get_level() > 0) {
+                @ob_end_flush();
+            }
+            flush();
+        }
+        if ($afterResponse !== null) {
+            try {
+                $afterResponse();
+            } catch (\Throwable $error) {
+                error_log('MagicLink deferred work failed: ' . $error->getMessage());
+            }
+        }
         exit;
     }
 }

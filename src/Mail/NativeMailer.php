@@ -12,6 +12,9 @@ final class NativeMailer implements Mailer
 
     public function send(string $to, string $subject, string $html, string $plain): void
     {
+        if (!filter_var($to, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $to)) {
+            throw new RuntimeException('Recipient email is invalid.');
+        }
         $fromAddress = $this->cleanHeader($this->config->string('MAIL_FROM_ADDRESS'));
         $fromName = $this->cleanHeader($this->config->string('MAIL_FROM_NAME', $this->config->string('APP_NAME')));
         if (!filter_var($fromAddress, FILTER_VALIDATE_EMAIL)) {

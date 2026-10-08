@@ -34,5 +34,6 @@ if (file_put_contents($root . '/.env', $contents, LOCK_EX) === false) {
     exit(1);
 }
 @chmod($root . '/.env', 0600);
-require $root . '/bootstrap.php';
+require $root . '/autoload.php';
+IamAngusU\MagicLink\Kernel::boot($root);
 echo "Installed. Point the document root at {$root}/public and open {$url}.\n";

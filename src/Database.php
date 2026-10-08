@@ -8,6 +8,8 @@ use RuntimeException;
 
 final class Database
 {
+    private const SCHEMA_VERSION = 2;
+
     private function __construct(private PDO $pdo, private string $driver) {}
 
     public static function connect(Config $config): self
@@ -15,7 +17,7 @@ final class Database
         $driver = $config->string('DB_DRIVER');
         if ($driver === 'sqlite') {
             $path = $config->string('DB_PATH', 'storage/database.sqlite');
-            if (!preg_match('~^(?:[A-Za-z]:[\\/]|/)~', $path)) {
+            if (!preg_match('~^(?:[A-Za-z]:[\\\\/]|/)~', $path)) {
                 $path = $config->root() . '/' . ltrim($path, '/\\');
             }
             $directory = dirname($path);
@@ -46,6 +48,19 @@ final class Database
         return $this->pdo;
     }
 
+    public function ensureSchema(): void
+    {
+        try {
+            $statement = $this->pdo->query("SELECT value FROM schema_meta WHERE name = 'schema_version' LIMIT 1");
+            if ((int) $statement->fetchColumn() >= self::SCHEMA_VERSION) {
+                return;
+            }
+        } catch (\PDOException) {
+            // A fresh or v1 installation has no schema_meta table yet.
+        }
+        $this->migrate();
+    }
+
     public function migrate(): void
     {
         $id = $this->driver === 'sqlite' ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT';
@@ -72,6 +87,15 @@ final class Database
             created_at BIGINT NOT NULL
         )");
         $this->createIndex('idx_rate_limits_bucket', 'rate_limits', 'bucket, created_at');
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS rate_limit_counters (
+            id {$id},
+            bucket CHAR(64) NOT NULL,
+            window_started BIGINT NOT NULL,
+            hits BIGINT NOT NULL DEFAULT 0,
+            expires_at BIGINT NOT NULL,
+            UNIQUE(bucket, window_started)
+        )");
+        $this->createIndex('idx_rate_limit_counters_expiry', 'rate_limit_counters', 'expires_at');
         $this->pdo->exec("CREATE TABLE IF NOT EXISTS audit_events (
             id {$id},
             event_type VARCHAR(80) NOT NULL,
@@ -81,6 +105,53 @@ final class Database
             created_at BIGINT NOT NULL
         )");
         $this->createIndex('idx_audit_events_created', 'audit_events', 'created_at');
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS mail_outbox (
+            id {$id},
+            selector VARCHAR(64) NOT NULL UNIQUE,
+            deliverable SMALLINT NOT NULL DEFAULT 0,
+            payload_cipher {$text} NOT NULL,
+            subject_hash CHAR(64) NOT NULL,
+            request_ip_hash CHAR(64) NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            attempts BIGINT NOT NULL DEFAULT 0,
+            available_at BIGINT NOT NULL,
+            lock_token VARCHAR(64) NULL,
+            locked_at BIGINT NULL,
+            sent_at BIGINT NULL,
+            last_error_hash CHAR(64) NULL,
+            created_at BIGINT NOT NULL
+        )");
+        $this->createIndex('idx_mail_outbox_ready', 'mail_outbox', 'status, available_at, id');
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS maintenance_state (
+            name VARCHAR(64) PRIMARY KEY,
+            last_run BIGINT NOT NULL
+        )");
+        $this->insertIgnore('maintenance_state', ['name' => 'cleanup', 'last_run' => 0]);
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS schema_meta (
+            name VARCHAR(64) PRIMARY KEY,
+            value VARCHAR(255) NOT NULL
+        )");
+        $this->upsertSchemaVersion();
+    }
+
+    /** @param array<string,string|int> $values */
+    private function insertIgnore(string $table, array $values): void
+    {
+        $columns = implode(',', array_keys($values));
+        $placeholders = implode(',', array_fill(0, count($values), '?'));
+        $prefix = $this->driver === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
+        $statement = $this->pdo->prepare("{$prefix} INTO {$table}({$columns}) VALUES({$placeholders})");
+        $statement->execute(array_values($values));
+    }
+
+    private function upsertSchemaVersion(): void
+    {
+        if ($this->driver === 'sqlite') {
+            $statement = $this->pdo->prepare("INSERT INTO schema_meta(name,value) VALUES('schema_version',?) ON CONFLICT(name) DO UPDATE SET value = excluded.value");
+        } else {
+            $statement = $this->pdo->prepare("INSERT INTO schema_meta(name,value) VALUES('schema_version',?) ON DUPLICATE KEY UPDATE value = VALUES(value)");
+        }
+        $statement->execute([(string) self::SCHEMA_VERSION]);
     }
 
     private function createIndex(string $name, string $table, string $columns): void

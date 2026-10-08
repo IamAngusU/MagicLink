@@ -14,6 +14,7 @@ php bin/install.php \
   --allow=owner@example.com \
   --from=no-reply@example.com
 php bin/doctor.php
+php bin/check.php
 sudo chgrp -R www-data storage
 sudo chmod 2770 storage
 ```
@@ -21,6 +22,10 @@ sudo chmod 2770 storage
 Configure the selected virtual host from `deploy/`, request a TLS certificate,
 then reload Nginx or Apache. Keep the repository and `storage/` out of unrelated
 site roots.
+
+Für dauerhaft unabhängigen Versand setze `MAIL_AUTO_DISPATCH=false` und betreibe
+`php bin/worker.php --loop` unter systemd oder Supervisor. Details und
+Batch-Defaults stehen unter [Betrieb und Last](OPERATIONS.md).
 
 ## Update
 
@@ -35,7 +40,7 @@ request. Back up both the database and `storage/app.key` before updating.
 
 ## Reverse proxies
 
-MagicLink deliberately uses `REMOTE_ADDR` and does not trust
-`X-Forwarded-For` by default. Configure the web server to replace the remote
-address only when requests come from a proxy you control. Never pass a client
-supplied forwarding header through unchanged.
+MagicLink verwendet standardmäßig ausschließlich `REMOTE_ADDR`. Nur wenn der
+direkte Peer in `TRUSTED_PROXIES` steht, wird eine vollständig validierte
+`X-Forwarded-For`-Kette von rechts nach links ausgewertet. Trage ausschließlich
+Proxies ein, die du kontrollierst und die eingehende Client-Header ersetzen.

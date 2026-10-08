@@ -5,44 +5,42 @@ namespace IamAngusU\MagicLink;
 
 use IamAngusU\MagicLink\Exception\InvalidLink;
 use IamAngusU\MagicLink\Exception\RateLimited;
-use IamAngusU\MagicLink\Mail\Mailer;
 use PDO;
 use Throwable;
 
 final class MagicLinkService
 {
-    public function __construct(
-        private PDO $pdo,
-        private Config $config,
-        private Crypto $crypto,
-        private Mailer $mailer,
-    ) {}
+    public function __construct(private PDO $pdo, private Config $config, private Crypto $crypto) {}
 
     /** @return array{selector:string,state:string,expires_at:int,masked_email:string} */
     public function request(string $email, string $sessionBinding, string $ipAddress): array
     {
         $email = strtolower(trim($email));
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
-            throw new \InvalidArgumentException('Please enter a valid email address.');
-        }
-
         $now = time();
-        $emailLookup = $this->crypto->hmac('email', $email);
         $ipHash = $this->crypto->hmac('ip', $ipAddress);
-        $deliverable = $this->emailAllowed($email);
-        $selector = 'ml_' . bin2hex(random_bytes(12));
-        $token = $this->crypto->token();
-        $expiresAt = $now + $this->config->int('MAGICLINK_TTL_SECONDS', 900);
-        $sessionHash = $this->crypto->hmac('session', $sessionBinding);
+        $emailLookup = $this->crypto->hmac('email', substr($email, 0, 254));
 
         $this->beginWrite();
         try {
-            $this->rateLimit('ip|' . $ipHash, $this->config->int('MAGICLINK_IP_LIMIT', 10), $now);
-            $this->rateLimit('email|' . $emailLookup, $this->config->int('MAGICLINK_EMAIL_LIMIT', 5), $now);
-            if ($deliverable) {
-                $invalidate = $this->pdo->prepare('UPDATE magic_links SET consumed_at = ? WHERE email_lookup = ? AND consumed_at IS NULL');
-                $invalidate->execute([$now, $emailLookup]);
+            $this->rateLimit('request|ip|' . $ipHash, $this->config->int('MAGICLINK_IP_LIMIT', 10), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
+                $this->audit('magic_link.invalid_request', $emailLookup, $ipHash, []);
+                $this->pdo->commit();
+                throw new \InvalidArgumentException('Please enter a valid email address.');
             }
+
+            $this->rateLimit('request|email|' . $emailLookup, $this->config->int('MAGICLINK_EMAIL_LIMIT', 5), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
+            $deliverable = $this->emailAllowed($email);
+            $selector = 'ml_' . bin2hex(random_bytes(12));
+            $token = $this->crypto->token();
+            $expiresAt = $now + $this->config->int('MAGICLINK_TTL_SECONDS', 900);
+            $sessionHash = $this->crypto->hmac('session', $sessionBinding);
+
+            // Keep the public path structurally identical for allowed and denied identities.
+            $invalidate = $this->pdo->prepare('UPDATE magic_links SET consumed_at = ? WHERE email_lookup = ? AND consumed_at IS NULL');
+            $invalidate->execute([$now, $emailLookup]);
+            $cancelMail = $this->pdo->prepare("UPDATE mail_outbox SET status = 'cancelled', lock_token = NULL, locked_at = NULL WHERE subject_hash = ? AND status = 'pending'");
+            $cancelMail->execute([$emailLookup]);
             $insert = $this->pdo->prepare('INSERT INTO magic_links(selector,token_hash,email_lookup,email_cipher,session_binding,request_ip_hash,deliverable,expires_at,consumed_at,verified_at,created_at) VALUES(?,?,?,?,?,?,?,?,NULL,NULL,?)');
             $insert->execute([
                 $selector,
@@ -55,26 +53,29 @@ final class MagicLinkService
                 $expiresAt,
                 $now,
             ]);
+
+            $url = $this->config->url('/auth/check') . '?id=' . rawurlencode($selector) . '#token=' . rawurlencode($token);
+            $payload = $deliverable
+                ? json_encode(['email' => $email, 'url' => $url, 'expires_at' => $expiresAt], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
+                : '{}';
+            $outbox = $this->pdo->prepare('INSERT INTO mail_outbox(selector,deliverable,payload_cipher,subject_hash,request_ip_hash,status,attempts,available_at,created_at) VALUES(?,?,?,?,?,?,0,?,?)');
+            $outbox->execute([
+                $selector,
+                $deliverable ? 1 : 0,
+                $this->crypto->encrypt($payload),
+                $emailLookup,
+                $ipHash,
+                $deliverable ? 'pending' : 'decoy',
+                $now,
+                $now,
+            ]);
             $this->audit($deliverable ? 'magic_link.requested' : 'magic_link.denied', $emailLookup, $ipHash, ['selector' => $selector]);
             $this->pdo->commit();
         } catch (Throwable $error) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
             }
-            if ($error instanceof RateLimited) {
-                $this->audit('magic_link.rate_limited', $emailLookup, $ipHash, []);
-            }
             throw $error;
-        }
-
-        if ($deliverable) {
-            $url = $this->config->url('/auth/check') . '?id=' . rawurlencode($selector) . '#token=' . rawurlencode($token);
-            try {
-                $this->sendMail($email, $url, $expiresAt);
-            } catch (Throwable $error) {
-                $this->audit('magic_link.delivery_failed', $emailLookup, $ipHash, ['selector' => $selector]);
-                throw $error;
-            }
         }
 
         return [
@@ -85,39 +86,82 @@ final class MagicLinkService
         ];
     }
 
-    /** @return array{state:string,expires_at:int,verified:bool,email:?string} */
+    /** @return array{state:string,expires_at:int,verified:bool,terminal:bool} */
     public function state(string $selector, string $sessionBinding): array
     {
-        if (!preg_match('/^ml_[a-f0-9]{24}$/D', $selector)) {
+        $states = $this->states([$selector], $sessionBinding);
+        if (!isset($states[$selector])) {
             throw new InvalidLink('Request not found.');
         }
-        $statement = $this->pdo->prepare('SELECT email_cipher,session_binding,deliverable,expires_at,consumed_at,verified_at FROM magic_links WHERE selector = ? LIMIT 1');
-        $statement->execute([$selector]);
-        $row = $statement->fetch();
+        return $states[$selector];
+    }
+
+    /**
+     * @param list<string> $selectors
+     * @return array<string,array{state:string,expires_at:int,verified:bool,terminal:bool}>
+     */
+    public function states(array $selectors, string $sessionBinding): array
+    {
+        $selectors = array_values(array_unique($selectors));
+        if ($selectors === []) {
+            return [];
+        }
+        foreach ($selectors as $selector) {
+            if (!preg_match('/^ml_[a-f0-9]{24}$/D', $selector)) {
+                throw new InvalidLink('Request not found.');
+            }
+        }
+
+        $placeholders = implode(',', array_fill(0, count($selectors), '?'));
+        $statement = $this->pdo->prepare("SELECT selector,session_binding,deliverable,expires_at,consumed_at,verified_at FROM magic_links WHERE selector IN ({$placeholders})");
+        $statement->execute($selectors);
         $binding = $this->crypto->hmac('session', $sessionBinding);
-        if (!is_array($row) || !hash_equals((string) $row['session_binding'], $binding)) {
+        $rows = [];
+        foreach ($statement->fetchAll() as $row) {
+            if (!hash_equals((string) $row['session_binding'], $binding)) {
+                continue;
+            }
+            $selector = (string) $row['selector'];
+            if ($row['verified_at'] !== null && (int) $row['deliverable'] === 1) {
+                $rows[$selector] = ['state' => MagicLinkState::Verified->value, 'expires_at' => (int) $row['expires_at'], 'verified' => true, 'terminal' => true];
+                continue;
+            }
+            $expired = $row['consumed_at'] !== null || (int) $row['expires_at'] <= time();
+            $rows[$selector] = [
+                'state' => $expired ? MagicLinkState::Expired->value : MagicLinkState::Waiting->value,
+                'expires_at' => (int) $row['expires_at'],
+                'verified' => false,
+                'terminal' => $expired,
+            ];
+        }
+
+        if (count($rows) !== count($selectors)) {
             throw new InvalidLink('Request not found.');
         }
-        if ($row['verified_at'] !== null && (int) $row['deliverable'] === 1) {
-            return ['state' => MagicLinkState::Verified->value, 'expires_at' => (int) $row['expires_at'], 'verified' => true, 'email' => $this->crypto->decrypt((string) $row['email_cipher'])];
-        }
-        $expired = $row['consumed_at'] !== null || (int) $row['expires_at'] <= time();
-        return ['state' => $expired ? MagicLinkState::Expired->value : MagicLinkState::Waiting->value, 'expires_at' => (int) $row['expires_at'], 'verified' => false, 'email' => null];
+        return $rows;
     }
 
     /** @return array{state:string,email:string} */
     public function exchange(string $selector, string $token, string $ipAddress): array
     {
-        if (!preg_match('/^ml_[a-f0-9]{24}$/D', $selector) || strlen($token) < 40 || strlen($token) > 100) {
-            throw new InvalidLink('The link is invalid or expired.');
-        }
+        $now = time();
         $ipHash = $this->crypto->hmac('ip', $ipAddress);
+        $selectorHash = $this->crypto->hmac('selector', substr($selector, 0, 64));
         $this->beginWrite();
         try {
+            $window = $this->config->int('MAGICLINK_EXCHANGE_WINDOW', 900);
+            $this->rateLimit('exchange|ip|' . $ipHash, $this->config->int('MAGICLINK_EXCHANGE_IP_LIMIT', 60), $window, $now);
+            if (!preg_match('/^ml_[a-f0-9]{24}$/D', $selector) || strlen($token) < 40 || strlen($token) > 100) {
+                $this->pdo->commit();
+                throw new InvalidLink('The link is invalid or expired.');
+            }
+            $this->rateLimit('exchange|selector|' . $selectorHash, $this->config->int('MAGICLINK_EXCHANGE_SELECTOR_LIMIT', 10), $window, $now);
+
             $statement = $this->pdo->prepare('SELECT token_hash,email_lookup,email_cipher,deliverable,expires_at,consumed_at FROM magic_links WHERE selector = ? LIMIT 1');
             $statement->execute([$selector]);
             $row = $statement->fetch();
             if (!is_array($row)) {
+                $this->pdo->commit();
                 throw new InvalidLink('The link is invalid or expired.');
             }
             if ($row['consumed_at'] !== null) {
@@ -126,16 +170,15 @@ final class MagicLinkService
                 throw new InvalidLink('The link was already used.');
             }
             $valid = (int) $row['deliverable'] === 1
-                && (int) $row['expires_at'] > time()
+                && (int) $row['expires_at'] > $now
                 && hash_equals((string) $row['token_hash'], $this->crypto->hmac('token', $token));
             if (!$valid) {
                 $this->audit('magic_link.rejected', (string) $row['email_lookup'], $ipHash, ['selector' => $selector]);
                 $this->pdo->commit();
                 throw new InvalidLink('The link is invalid or expired.');
             }
-            $verifiedAt = time();
             $consume = $this->pdo->prepare('UPDATE magic_links SET consumed_at = ?, verified_at = ? WHERE selector = ? AND consumed_at IS NULL');
-            $consume->execute([$verifiedAt, $verifiedAt, $selector]);
+            $consume->execute([$now, $now, $selector]);
             if ($consume->rowCount() !== 1) {
                 throw new InvalidLink('The link was already used.');
             }
@@ -168,22 +211,23 @@ final class MagicLinkService
         return false;
     }
 
-    private function rateLimit(string $source, int $limit, int $now): void
+    private function rateLimit(string $source, int $limit, int $window, int $now): void
     {
-        $window = $this->config->int('MAGICLINK_RATE_WINDOW', 3600);
+        $window = max(1, $window);
+        $windowStarted = intdiv($now, $window) * $window;
         $bucket = $this->crypto->hmac('rate', $source);
-        $suffix = $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql' ? ' FOR UPDATE' : '';
-        $statement = $this->pdo->prepare('SELECT COUNT(*) FROM rate_limits WHERE bucket = ? AND created_at >= ?' . $suffix);
-        $statement->execute([$bucket, $now - $window]);
-        if ((int) $statement->fetchColumn() >= $limit) {
-            throw new RateLimited('Too many requests. Please try again later.');
+        $driver = (string) $this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $prefix = $driver === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
+        $insert = $this->pdo->prepare("{$prefix} INTO rate_limit_counters(bucket,window_started,hits,expires_at) VALUES(?,?,0,?)");
+        $insert->execute([$bucket, $windowStarted, $windowStarted + ($window * 2)]);
+        $suffix = $driver === 'mysql' ? ' FOR UPDATE' : '';
+        $select = $this->pdo->prepare('SELECT hits FROM rate_limit_counters WHERE bucket = ? AND window_started = ?' . $suffix);
+        $select->execute([$bucket, $windowStarted]);
+        if ((int) $select->fetchColumn() >= $limit) {
+            throw new RateLimited('Too many requests. Please try again later.', max(1, ($windowStarted + $window) - $now));
         }
-        $insert = $this->pdo->prepare('INSERT INTO rate_limits(bucket,created_at) VALUES(?,?)');
-        $insert->execute([$bucket, $now]);
-        if (random_int(1, 100) === 1) {
-            $cleanup = $this->pdo->prepare('DELETE FROM rate_limits WHERE created_at < ?');
-            $cleanup->execute([$now - max($window, 86400)]);
-        }
+        $update = $this->pdo->prepare('UPDATE rate_limit_counters SET hits = hits + 1 WHERE bucket = ? AND window_started = ?');
+        $update->execute([$bucket, $windowStarted]);
     }
 
     /** @param array<string,string|int|bool> $metadata */
@@ -207,31 +251,5 @@ final class MagicLinkService
         [$local, $domain] = explode('@', $email, 2);
         $visible = substr($local, 0, min(2, strlen($local)));
         return $visible . str_repeat('•', max(3, strlen($local) - strlen($visible))) . '@' . $domain;
-    }
-
-    private function sendMail(string $email, string $url, int $expiresAt): void
-    {
-        $app = htmlspecialchars($this->config->string('APP_NAME'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $minutes = (int) ceil(($expiresAt - time()) / 60);
-        $subject = $this->config->locale() === 'de' ? 'Dein sicherer Anmeldelink' : 'Your secure sign-in link';
-        if ($this->config->locale() === 'de') {
-            $plain = "Öffne diesen Link, um dich bei {$this->config->string('APP_NAME')} anzumelden:\n\n{$url}\n\nDer Link ist {$minutes} Minuten gültig und kann einmal verwendet werden.";
-            $copy = 'Öffne den Link, um dich anzumelden. Er ist einmal verwendbar und läuft nach ' . $minutes . ' Minuten ab.';
-            $button = 'Sicher anmelden';
-        } else {
-            $plain = "Open this link to sign in to {$this->config->string('APP_NAME')}:\n\n{$url}\n\nThe link is valid for {$minutes} minutes and can be used once.";
-            $copy = 'Open the link to sign in. It can be used once and expires after ' . $minutes . ' minutes.';
-            $button = 'Sign in securely';
-        }
-        $html = '<!doctype html><html><body style="margin:0;background:#eef4f3;color:#142024;font-family:Arial,sans-serif">'
-            . '<div style="max-width:560px;margin:0 auto;padding:48px 24px"><div style="background:#fff;border:1px solid #cbd8d6;padding:36px">'
-            . '<p style="margin:0 0 28px;font-size:13px;color:#43615f">' . $app . '</p>'
-            . '<h1 style="font-size:30px;line-height:1.15;margin:0 0 16px">' . htmlspecialchars($subject, ENT_QUOTES, 'UTF-8') . '</h1>'
-            . '<p style="font-size:16px;line-height:1.6;margin:0 0 28px">' . htmlspecialchars($copy, ENT_QUOTES, 'UTF-8') . '</p>'
-            . '<p style="margin:0"><a href="' . $safeUrl . '" style="display:inline-block;background:#0a6e75;color:#fff;text-decoration:none;padding:14px 20px;border-radius:4px">' . htmlspecialchars($button, ENT_QUOTES, 'UTF-8') . '</a></p>'
-            . '<p style="font-size:12px;line-height:1.5;color:#607775;margin:28px 0 0">' . htmlspecialchars($email, ENT_QUOTES, 'UTF-8') . '</p>'
-            . '</div></div></body></html>';
-        $this->mailer->send($email, $subject, $html, $plain);
     }
 }

@@ -1,7 +1,7 @@
 {
   "requested": "Preparing a secure link.",
-  "waiting": "Check your inbox. This page advances automatically after confirmation.",
-  "verified": "Confirmed. Your session is now active.",
+  "waiting": "Check your inbox. This page shows the confirmation live.",
+  "verified": "Confirmed. The session is active on the device holding the link.",
   "expired": "The link expired. Request a new one.",
   "replayed": "The link was already used.",
   "rate_limited": "Too many attempts. Wait and try again later.",

@@ -1,12 +1,16 @@
-<div class="content-block" data-waiting data-state-url="<?= $e($stateUrl) ?>" data-home-url="<?= $e($homeUrl) ?>">
+<div class="content-block" data-waiting data-state-url="<?= $e($stateUrl) ?>" data-poll-after="<?= $e($pollAfterMs) ?>">
     <p class="context"><?= $locale === 'de' ? 'Link unterwegs' : 'Link on its way' ?></p>
     <h1><?= $locale === 'de' ? 'Lass diese Seite offen.' : 'Keep this page open.' ?></h1>
     <p class="lede" data-state-message><?= $e($stateMessage) ?></p>
+    <div class="state-signal" aria-live="polite">
+        <span><?= $locale === 'de' ? 'Statussignal' : 'State signal' ?></span>
+        <code data-state-code><?= $e($stateCode) ?></code>
+    </div>
     <div class="delivery-address">
         <span><?= $locale === 'de' ? 'Gesendet an' : 'Sent to' ?></span>
         <strong><?= $e($maskedEmail) ?></strong>
     </div>
-    <div class="live-line" aria-live="polite">
+    <div class="live-line">
         <i></i><span data-countdown data-expires-at="<?= $e($expiresAt) ?>"><?= $locale === 'de' ? 'Warte auf Bestätigung' : 'Waiting for confirmation' ?></span>
     </div>
     <a class="text-link" href="<?= $e($homeUrl) ?>"><?= $locale === 'de' ? 'Andere Adresse verwenden' : 'Use another address' ?></a>

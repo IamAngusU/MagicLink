@@ -1,27 +1,41 @@
 # Integration
 
-`public/index.php` is a complete example app. The reusable boundary is the
-server-side session set by `MagicLinkService` and exposed through
-`Session::email()`.
+## Gleiche PHP-Anwendung
 
-## Same application
+`bootstrap.php` startet MagicLink und dieselbe PHP-Session. Nach einem
+erfolgreichen Exchange liefert `Session::email()` die normalisierte Identität:
 
-Mount MagicLink under a stable prefix such as `/login`, configure that exact
-prefix in `APP_URL`, and require `bootstrap.php` before reading the session.
-Use the returned, normalized email as an identity key; perform roles and resource
-authorization in the host application.
+```php
+<?php
+$app = require __DIR__ . '/magic-link/bootstrap.php';
 
-## Separate application
+$email = IamAngusU\MagicLink\Session::email();
+if ($email === null) {
+    header('Location: /login');
+    exit;
+}
+```
 
-PHP sessions are intentionally local. For another host or technology stack, do
-not copy the session cookie or expose the database. Add an explicit, short-lived
-handoff token scoped to the target application and consume it there once. Keep
-that bridge separate from the email token so one credential cannot be replayed
-across two trust boundaries.
+Die E-Mail ist ein Identity-Key, keine Rollenentscheidung. Autorisierung bleibt
+Aufgabe der Host-Anwendung.
 
-## UI replacement
+## Eigene oder getrennte UI
 
-Templates live under `templates/`, while stable state codes live in
-`src/MagicLinkState.php`. A custom UI should branch on the code, not on translated
-copy. Preserve the fragment-to-POST exchange in `public/assets/app.js` and keep
-the security headers in `App::securityHeaders()` when replacing the pages.
+Nutze die versionierten Endpunkte aus [API.md](API.md). Die UI holt zuerst
+`/api/v1/config`, übernimmt CSRF-Token, absolute Endpoint-URLs, State-Katalog und
+berechnete Limits und sendet immer Cookies mit.
+
+Bei einer anderen Origin konfigurierst du eine exakte `API_ALLOWED_ORIGINS`,
+HTTPS, `SESSION_SAMESITE=None` und üblicherweise `AUTH_SUCCESS_URL`. Teile oder
+kopiere keine Session-Cookies zwischen Hosts.
+
+## Anderer Backend-Stack
+
+Die Browser-Session gehört dem MagicLink-Host. Wenn ein anderes Backend seine
+eigene serverseitige Identität braucht, ergänze einen separaten, kurzlebigen und
+einmalig konsumierbaren Handoff, der auf genau dieses Zielsystem begrenzt ist.
+Der E-Mail-Token darf nicht zugleich als Backend-zu-Backend-Credential dienen.
+
+Die mitgelieferte Beispielseite ist nur ein Übergabepunkt. Templates liegen in
+`templates/`, Design in `public/assets/`; stabile Logik und Zustände bleiben in
+der API.

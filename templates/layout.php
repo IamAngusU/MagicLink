@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title><?= $e($title ?? $appName) ?> · <?= $e($appName) ?></title>
-    <link rel="stylesheet" href="<?= $e($assetBase) ?>/app.css">
-    <script src="<?= $e($assetBase) ?>/app.js" defer></script>
+    <link rel="stylesheet" href="<?= $e($assetBase) ?>/app.css?v=<?= $e($assetVersion) ?>">
+    <script src="<?= $e($assetBase) ?>/app.js?v=<?= $e($assetVersion) ?>" defer></script>
 </head>
 <body>
 <main class="shell">

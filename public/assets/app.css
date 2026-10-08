@@ -18,7 +18,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--paper);
+  background:
+    linear-gradient(rgba(10, 110, 117, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 110, 117, 0.035) 1px, transparent 1px),
+    var(--paper);
+  background-size: 32px 32px;
   color: var(--ink);
 }
 
@@ -34,7 +38,7 @@ input { font: inherit; }
 .route-panel {
   min-height: 100%;
   padding: clamp(30px, 6vw, 76px);
-  background: #dce8e6;
+  background: rgba(220, 232, 230, 0.94);
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
@@ -170,6 +174,33 @@ button.secondary { background: var(--ink); }
   border-bottom: 1px solid var(--line);
   margin-bottom: 26px;
 }
+
+.state-signal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 24px;
+  padding: 11px 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.state-signal code {
+  color: var(--action);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+[data-waiting][data-state="expired"] .state-signal code { color: var(--error); }
+[data-waiting][data-confirmed="true"] .state-signal code { color: var(--verified); }
 
 .delivery-address span,
 .identity-block span { color: var(--muted); font-size: 0.82rem; }

@@ -29,6 +29,19 @@ Start with `MAIL_TRANSPORT=mail` when the provider exposes a configured PHP mail
 transport. Use `smtp` when the provider gives explicit SMTP credentials. Never
 commit those credentials; `.env` is ignored by Git.
 
+Der Zero-Setup-Modus liefert nach der HTTP-Antwort eine Queue-Position aus. Bei
+einem Cron-fähigen Tarif ist der robustere Betrieb:
+
+```dotenv
+MAIL_AUTO_DISPATCH=false
+```
+
+```cron
+* * * * * /usr/bin/php /home/account/magiclink/bin/worker.php --once >/dev/null 2>&1
+```
+
+Mehr dazu steht unter [Betrieb und Last](OPERATIONS.md).
+
 ## MySQL instead of SQLite
 
 ```dotenv

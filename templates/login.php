@@ -1,7 +1,7 @@
 <div class="content-block">
     <p class="context"><?= $locale === 'de' ? 'Zugang' : 'Access' ?></p>
     <h1><?= $locale === 'de' ? 'Öffne deine Sitzung aus dem Postfach.' : 'Open your session from your inbox.' ?></h1>
-    <p class="lede"><?= $locale === 'de' ? 'Du erhältst einen kurz gültigen Link. Er funktioniert genau einmal und enthält kein Passwort.' : 'You will receive a short-lived link. It works exactly once and contains no password.' ?></p>
+    <p class="lede"><?= $locale === 'de' ? 'Du erhältst einen kurz gültigen Link. Er funktioniert genau einmal und öffnet die Sitzung nur auf dem Gerät, das ihn bestätigt.' : 'You will receive a short-lived link. It works once and opens the session only on the device that confirms it.' ?></p>
 
     <?php if (!empty($error)): ?>
         <p class="notice is-error" role="alert"><?= $e($error) ?></p>

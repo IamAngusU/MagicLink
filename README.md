@@ -4,50 +4,45 @@
 
 <h1 align="center">MagicLink</h1>
 
-<p align="center"><strong>Ein sicherer Anmeldelink für Shared Hosting und VPS.<br>Kein Framework, kein Composer-Zwang, kein Passwortspeicher.</strong></p>
+<p align="center"><strong>Passwortlose Anmeldung, die auf Shared Hosting genauso klein startet wie auf einem VPS – mit eigener UI, eigener Config und ohne sichtbaren Infrastrukturballast.</strong></p>
 
 <p align="center">
   <a href="https://github.com/IamAngusU/MagicLink/releases/latest"><strong>Fertiges ZIP herunterladen</strong></a>
-  · <a href="docs/SHARED-HOSTING.md">Shared Hosting</a>
-  · <a href="docs/VPS.md">VPS</a>
-  · <a href="SECURITY.md">Sicherheit</a>
+  · <a href="docs/API.md">Headless API</a>
+  · <a href="docs/CONFIGURATION.md">Config</a>
+  · <a href="docs/OPERATIONS.md">Betrieb</a>
+  · <a href="SECURITY.md">Security</a>
 </p>
 
 <p align="center"><img src="docs/assets/stack-marquee.svg" alt="PHP, JavaScript, HTML, CSS, SQLite, MySQL, Apache und Nginx" width="780"></p>
 
-## Das Problem
+## Problem
 
-Ein Passwort-Login klingt klein und bringt trotzdem Reset-Mails, Hash-Parameter,
-Credential-Stuffing, Sessions, CSRF, Rate Limits und sensible Fehlerzustände mit.
-Viele Magic-Link-Beispiele verschieben das Problem nur: Der Token landet im
-Access-Log, ein Mail-Scanner verbraucht ihn per GET oder derselbe Link funktioniert
-mehrfach.
+Ein kleiner Login zieht schnell Passwort-Resets, Credential-Stuffing, Sessions,
+CSRF, Mailfehler, Enumeration und Retention nach sich. Viele Magic-Link-Snippets
+legen zudem den Token ins Serverlog oder melden den falschen Browser an.
 
-## Die Lösung
+## Lösung
 
-MagicLink ist ein kleiner, eigenständiger PHP-Login mit einer klaren Grenze:
+MagicLink kapselt diesen Unterbau hinter einer kleinen, versionierten API:
 
-- der öffentliche Selector steht im Querystring;
-- das eigentliche Geheimnis bleibt im URL-Fragment und erreicht den Server erst
-  durch einen CSRF- und Origin-geschützten POST;
-- der Token liegt nur als HMAC in SQLite oder MySQL;
-- der erste gültige POST verbraucht ihn atomar;
-- Replay, Ablauf, Rate Limit und Cross-Device-Bestätigung sind eigene Zustände;
-- E-Mail-Adressen werden verschlüsselt, Audit-Ereignisse enthalten nur Hashes und
-  technische Metadaten;
-- nicht freigeschaltete Adressen erhalten denselben sichtbaren Waiting-State und
-  verraten dadurch keine Allowlist.
+- das Geheimnis bleibt im URL-Fragment und wird erst per geschütztem POST verbraucht;
+- ausschließlich das Gerät mit dem Link erhält die Sitzung;
+- State- und Batch-Endpunkte liefern stabile Codes für deine eigene UI;
+- E-Mail läuft über eine verschlüsselte Outbox mit Retry und gleicher Außenwirkung
+  für erlaubte und nicht erlaubte Adressen;
+- Rate Limits, Request-Größen, Proxy-Vertrauen, Sessions, CORS und Retention sind
+  sichere Defaults – und vollständig über `.env` steuerbar;
+- `auto` wählt kleine SQLite- oder größere MySQL-Batches, explizite Werte gewinnen
+  immer.
 
-Die Sicherheitslogik stammt aus dem produktiven PRISM-Flow und wurde hier von
-PRISM-, Alva-, Billing- und Workspace-Code getrennt.
+Kein Framework und kein Composer-Zwang: PHP 8.2+, PDO und Sodium oder OpenSSL.
 
-## In drei Minuten nutzen
+## In drei Minuten
 
-### Shared Hosting
-
-1. [Das aktuelle Shared-Hosting-ZIP herunterladen](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip).
-2. Den Inhalt in die gewünschte Domain oder einen Unterordner hochladen.
-3. `.env.example` als `.env` kopieren und mindestens diese Werte ändern:
+1. [Das aktuelle ZIP laden](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip).
+2. Hochladen und `.env.example` nach `.env` kopieren.
+3. Drei Werte setzen:
 
 ```dotenv
 APP_URL=https://login.example.com
@@ -55,104 +50,65 @@ MAIL_FROM_ADDRESS=no-reply@example.com
 MAGICLINK_ALLOWED_EMAILS=you@example.com
 ```
 
-4. Die URL öffnen. Datenbank und App-Key werden beim ersten Start angelegt.
+4. Domain öffnen. SQLite, Schema und App-Key entstehen automatisch.
 
-Die Root-`.htaccess` schützt private Verzeichnisse und leitet auf `public/` um.
-Wenn das Hosting einen eigenen Document Root erlaubt, ist `public/` die
-bevorzugte und engere Grenze. Die vollständige Anleitung steht unter
-[Shared Hosting](docs/SHARED-HOSTING.md).
+Wenn möglich, zeigt der Document Root auf `public/`. Der Root-Fallback für
+klassisches Apache-Hosting ist bereits enthalten. Details: [Shared Hosting](docs/SHARED-HOSTING.md)
+oder [VPS](docs/VPS.md).
 
-### VPS
+## Eigene UI
+
+```js
+const api = "https://login.example.com/api/v1";
+const config = await fetch(`${api}/config`, { credentials: "include" })
+  .then(r => r.json());
+
+const request = await fetch(config.data.endpoints.request, {
+  method: "POST",
+  credentials: "include",
+  headers: {
+    "Content-Type": "application/json",
+    "X-CSRF-Token": config.data.csrf_token
+  },
+  body: JSON.stringify({ email: "you@example.com" })
+}).then(r => r.json());
+```
+
+Danach `GET /api/v1/state?id=…` mit dem in `meta.poll_after_ms` gelieferten
+Intervall pollen – oder mehrere eigene Requests über `POST /api/v1/states`
+bündeln. Antworten verwenden immer dieselbe Form:
+`{ ok, code, data, error, meta }`.
+
+Alle Endpunkte, States, CORS-Regeln und ein kompletter Browser-Flow stehen in der
+[Headless-API-Doku](docs/API.md).
+
+## Wenn es größer wird
+
+Ohne Setup wird nach der HTTP-Antwort genau eine Mail abgearbeitet. Bei mehr
+Traffic übernimmt ein Worker die Queue:
 
 ```bash
-git clone https://github.com/IamAngusU/MagicLink.git
-cd MagicLink
-php bin/install.php \
-  --url=https://login.example.com \
-  --allow=you@example.com \
-  --from=no-reply@example.com
+php bin/worker.php --loop
+php bin/maintain.php --all
+```
+
+Für Shared-Hosting-Cron genügt `php bin/worker.php --once`. MySQL, Workerzahl,
+Batch-Regeln, Retry-Verhalten und Retention erklärt [Betrieb unter Last](docs/OPERATIONS.md).
+
+## Sicherheitsgrenze
+
+MagicLink schützt den Login-Flow, nicht die Autorisierung deiner Anwendung oder
+ein kompromittiertes Postfach. Vor einem öffentlichen Deployment:
+
+```bash
 php bin/doctor.php
+php bin/check.php
 ```
 
-Danach zeigt Nginx oder Apache auf `public/`. Fertige Konfigurationen liegen in
-[`deploy/`](deploy/); die genauen Schritte stehen unter [VPS](docs/VPS.md).
+Lies außerdem [`SECURITY.md`](SECURITY.md) und das [Threat Model](docs/THREAT-MODEL.md).
 
-### Lokal prüfen
+Der Badge stammt aus `IamAngusU/Badges`, der Stack-Marquee aus
+`IamAngusU/Icon-Marquee`. Die aktuelle Link-Marke ist ein Platzhalter und kann
+später an einer kanonischen SVG-Quelle ersetzt werden.
 
-```bash
-cp .env.example .env
-# APP_ENV=local, APP_URL=http://127.0.0.1:8080 und MAIL_TRANSPORT=log setzen
-php -S 127.0.0.1:8080 -t public public/router.php
-```
-
-Die Entwicklungs-Mail wird unter `storage/mail/` abgelegt. `log` wird in
-Production absichtlich abgelehnt.
-
-## Mail versenden
-
-`MAIL_TRANSPORT=mail` verwendet die Mail-Konfiguration des Hostings. Für einen
-SMTP-Anbieter:
-
-```dotenv
-MAIL_TRANSPORT=smtp
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_ENCRYPTION=tls
-SMTP_USERNAME=account@example.com
-SMTP_PASSWORD=replace-me
-```
-
-TLS-Zertifikate werden geprüft. Unverschlüsseltes SMTP ist in Production
-gesperrt.
-
-## Zustände
-
-| Zustand | Bedeutung | Sichtbares Verhalten |
-| --- | --- | --- |
-| `requested` | Eingabe angenommen | neutrale Vorbereitung |
-| `waiting` | Link aktiv oder Enumeration-geschützter Decoy | Postfachansicht und Polling |
-| `verified` | Token atomar verbraucht | Sitzung wird auf beiden Geräten geöffnet |
-| `expired` | TTL überschritten | neuer Link erforderlich |
-| `replayed` | bereits verwendeter Token | generischer Fehler, Audit-Ereignis |
-| `rate_limited` | IP- oder E-Mail-Budget verbraucht | HTTP 429 |
-| `denied` | Adresse nicht freigeschaltet | nach außen weiterhin neutral |
-| `failed` | ungültige oder unvollständige Übergabe | neuer Link erforderlich |
-
-Die stabilen Codes liegen in [`MagicLinkState.php`](src/MagicLinkState.php), die
-deutschen und englischen Texte unter [`resources/states/`](resources/states/).
-
-## In eine Anwendung einbauen
-
-Nach erfolgreichem Login steht die normalisierte Identität in der serverseitigen
-Session:
-
-```php
-<?php
-$app = require __DIR__ . '/magic-link/bootstrap.php';
-
-$email = IamAngusU\MagicLink\Session::email();
-if ($email === null) {
-    header('Location: /login');
-    exit;
-}
-```
-
-Die Beispiel-Dashboardseite ist nur der Übergabepunkt. Weitere Hinweise stehen
-unter [Integration](docs/INTEGRATION.md).
-
-## Sicherheitsgrenzen
-
-MagicLink schützt den Login-Flow. Es ersetzt weder TLS, ein gepflegtes PHP,
-saubere Serverrechte noch die Autorisierung innerhalb deiner Anwendung. Lies vor
-einem öffentlichen Deployment [`SECURITY.md`](SECURITY.md) und das
-[`Threat Model`](docs/THREAT-MODEL.md).
-
-## Badge und Logo
-
-Der Badge wird aus dem privaten Repository `IamAngusU/Badges` generiert. Die
-aktuelle Link-Marke ist ausdrücklich ein Platzhalter. Sobald das finale Logo
-vorliegt, wird nur die kanonische SVG-Quelle im Badge-Katalog ersetzt und der
-Generator rendert alle Varianten neu.
-
-Dieses Repository ist privat und enthält derzeit keine öffentliche
-Softwarelizenz.
+Dieses private Repository enthält derzeit keine öffentliche Softwarelizenz.
