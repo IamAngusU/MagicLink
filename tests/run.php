@@ -123,6 +123,7 @@ $config = Config::fromArray($temporary, $databaseSettings + [
     'MAIL_TRANSPORT' => 'log',
     'MAIL_FROM_ADDRESS' => 'test@example.com',
     'MAGICLINK_ALLOWED_EMAILS' => 'owner@example.com',
+    'MAGICLINK_ALLOWED_DOMAINS' => 'example.com',
     'MAGICLINK_IP_LIMIT' => '100',
     'MAGICLINK_EMAIL_LIMIT' => '100',
     'MAGICLINK_EXCHANGE_IP_LIMIT' => '100',
@@ -230,6 +231,14 @@ $oversizedBatch = dispatch($app, 'POST', '/api/v1/states', [
     '_csrf' => 'csrf-requester',
 ], ['Origin' => 'http://127.0.0.1:8080']);
 expect($oversizedBatch->status() === 422, 'Batch endpoint must enforce its advertised limit before querying.');
+
+// A worker claims the selected IDs with one bounded batch update.
+$service->request('queue-one@example.com', 'worker-batch', '127.0.0.8');
+$service->request('queue-two@example.com', 'worker-batch', '127.0.0.8');
+$deliveredBeforeBatch = count($mailer->messages);
+$workerBatch = $outbox->run(2);
+expect($workerBatch['claimed'] === 2 && $workerBatch['sent'] === 2, 'Worker must claim and deliver a multi-row batch.');
+expect(count($mailer->messages) === $deliveredBeforeBatch + 2, 'Every claimed batch row must be delivered exactly once.');
 
 // Proxy headers are ignored unless the immediate peer is trusted.
 $_SERVER = ['REMOTE_ADDR' => '10.0.0.3', 'HTTP_X_FORWARDED_FOR' => '198.51.100.7, 10.0.0.2'];

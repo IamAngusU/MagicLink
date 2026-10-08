@@ -80,9 +80,10 @@ final class OutboxWorker
             $select = $this->pdo->prepare("SELECT id FROM mail_outbox WHERE status = 'pending' AND available_at <= ? ORDER BY id ASC LIMIT {$limit}{$suffix}");
             $select->execute([$now]);
             $ids = array_map('intval', array_column($select->fetchAll(), 'id'));
-            $claim = $this->pdo->prepare("UPDATE mail_outbox SET status = 'sending', lock_token = ?, locked_at = ?, attempts = attempts + 1 WHERE id = ? AND status = 'pending'");
-            foreach ($ids as $id) {
-                $claim->execute([$lockToken, $now, $id]);
+            if ($ids !== []) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $claim = $this->pdo->prepare("UPDATE mail_outbox SET status = 'sending', lock_token = ?, locked_at = ?, attempts = attempts + 1 WHERE status = 'pending' AND id IN ({$placeholders})");
+                $claim->execute([$lockToken, $now, ...$ids]);
             }
             $this->transaction->commit();
         } catch (Throwable $error) {
