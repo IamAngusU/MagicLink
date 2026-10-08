@@ -56,18 +56,26 @@ final class Response
 
     public function send(?callable $afterResponse = null): never
     {
-        http_response_code($this->status);
-        $headers = ['Content-Length' => (string) strlen($this->body)] + $this->headers;
+        $body = $this->body;
+        $status = $this->status;
+        $headers = $this->headers;
+        if (session_status() === PHP_SESSION_ACTIVE && !@session_write_close()) {
+            $body = 'The session could not be persisted.';
+            $status = 500;
+            $headers = [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+                'Cache-Control' => 'no-store, private',
+            ] + $headers;
+        }
+        http_response_code($status);
+        $headers = ['Content-Length' => (string) strlen($body)] + $headers;
         foreach ($headers as $name => $value) {
             header($name . ': ' . $value);
-        }
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            session_write_close();
         }
         if ($afterResponse !== null) {
             ignore_user_abort(true);
         }
-        echo $this->body;
+        echo $body;
         if (function_exists('fastcgi_finish_request')) {
             fastcgi_finish_request();
         } else {

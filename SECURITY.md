@@ -2,7 +2,8 @@
 
 ## Supported deployment
 
-- PHP 8.2 or newer with PDO and either Sodium or OpenSSL.
+- PHP 8.2 or newer with PDO and either Sodium or OpenSSL; MySQL deployments use
+  the fail-closed `mysqlnd` PDO backend.
 - HTTPS for every production request.
 - `public/` as the document root whenever the host supports it.
 - A configured allowlist, unless open registration is an explicit decision.
@@ -19,14 +20,18 @@ Run `php bin/doctor.php` after every deployment or PHP upgrade.
 - Atomic one-time consumption with bounded replay auditing.
 - Short TTL and invalidation of older links for the same identity.
 - Per-IP, per-email and per-selector fixed-window limits.
+- Identity-independent queue-capacity rejection and deterministic retention headroom.
 - Encrypted email storage using Sodium secretbox or AES-256-GCM.
 - Session ID rotation, idle/absolute expiry, `HttpOnly`, configurable `SameSite`
-  and production `Secure` cookies.
+  and production `Secure` cookies; file sessions own their GC policy and health
+  checks do not create server-side sessions.
 - CSP, no-referrer, no-store, frame denial and MIME-sniffing protection.
 - Enumeration-safe waiting state and queue timing for addresses outside the allowlist.
 - Metadata-only audit rows; raw IP addresses and email addresses are not logged.
 - Encrypted mail outbox with claim recovery, capped retries and retention.
 - Headless API with owned state IDs, stable envelopes and bounded batches.
+- Pre-parser body caps in shipped Apache/Nginx/PHP configs; no multipart surface.
+- Verified MySQL server identity for remote production and SMTP TLS 1.2+.
 
 ## Operator responsibilities
 

@@ -41,17 +41,27 @@ final class Config
             'APP_NAME' => 'Magic Link',
             'APP_LOCALE' => 'de',
             'AUTH_SUCCESS_URL' => '',
+            'HANDOFF_REDIRECT_URL' => '',
+            'HANDOFF_CLIENT_SECRET' => '',
+            'HANDOFF_TRANSACTION_TTL_SECONDS' => '900',
+            'HANDOFF_CODE_TTL_SECONDS' => '60',
+            'HANDOFF_RETENTION_SECONDS' => '86400',
+            'HANDOFF_INIT_LIMIT' => '1000',
+            'HANDOFF_INIT_WINDOW' => '600',
             'DB_DRIVER' => 'sqlite',
             'DB_PATH' => 'storage/database.sqlite',
+            'DB_SSL_MODE' => 'auto',
             'MAIL_TRANSPORT' => 'mail',
             'MAIL_FROM_NAME' => 'Magic Link',
             'MAGICLINK_ALLOW_ANY_EMAIL' => 'false',
             'MAGICLINK_TTL_SECONDS' => '900',
             'MAGICLINK_IP_LIMIT' => '10',
             'MAGICLINK_EMAIL_LIMIT' => '5',
+            'MAGICLINK_GLOBAL_LIMIT' => '1000',
             'MAGICLINK_RATE_WINDOW' => '3600',
             'MAGICLINK_EXCHANGE_IP_LIMIT' => '60',
             'MAGICLINK_EXCHANGE_SELECTOR_LIMIT' => '10',
+            'MAGICLINK_EXCHANGE_GLOBAL_LIMIT' => '1000',
             'MAGICLINK_EXCHANGE_WINDOW' => '900',
             'MAGICLINK_POLL_AFTER_MS' => '2500',
             'MAGICLINK_STATE_BATCH_MAX' => 'auto',
@@ -59,13 +69,16 @@ final class Config
             'AUDIT_RETENTION_SECONDS' => '2592000',
             'MAIL_AUTO_DISPATCH' => 'true',
             'MAIL_WORKER_BATCH' => 'auto',
+            'MAIL_PENDING_MAX' => 'auto',
             'MAIL_MAX_ATTEMPTS' => '5',
             'MAIL_LOCK_TIMEOUT_SECONDS' => '300',
             'MAIL_RETENTION_SECONDS' => '604800',
             'MAINTENANCE_BATCH' => 'auto',
-            'MAINTENANCE_INTERVAL_SECONDS' => '900',
+            'MAINTENANCE_INTERVAL_SECONDS' => '300',
             'HTTP_MAX_BODY_BYTES' => '16384',
             'SESSION_NAME' => 'magiclink_session',
+            'SESSION_STORAGE' => 'files',
+            'SESSION_SAVE_PATH' => 'storage/sessions',
             'SESSION_SAMESITE' => 'Lax',
             'SESSION_IDLE_SECONDS' => '28800',
             'SESSION_ABSOLUTE_SECONDS' => '604800',
@@ -199,8 +212,34 @@ final class Config
         if (!in_array($this->string('DB_DRIVER'), ['sqlite', 'mysql'], true)) {
             throw new RuntimeException('DB_DRIVER must be sqlite or mysql.');
         }
+        if (!in_array($this->string('DB_SSL_MODE', 'auto'), ['auto', 'verify_identity', 'disabled'], true)) {
+            throw new RuntimeException('DB_SSL_MODE must be auto, verify_identity or disabled.');
+        }
+        if ($this->string('DB_DRIVER') === 'mysql') {
+            $host = strtolower($this->string('DB_HOST', '127.0.0.1'));
+            $localDatabase = in_array($host, ['127.0.0.1', '::1', 'localhost'], true);
+            $sslMode = $this->string('DB_SSL_MODE', 'auto');
+            $sslCa = $this->string('DB_SSL_CA');
+            if ($sslMode === 'auto' && $sslCa !== '') {
+                $sslMode = 'verify_identity';
+            }
+            if ($this->string('APP_ENV') === 'production' && !$localDatabase && $sslMode !== 'verify_identity') {
+                throw new RuntimeException('Remote production MySQL requires DB_SSL_MODE=verify_identity and DB_SSL_CA.');
+            }
+            if ($sslMode === 'verify_identity' && $sslCa === '') {
+                throw new RuntimeException('DB_SSL_CA is required when MySQL TLS is enabled.');
+            }
+        }
         if (!in_array($this->string('MAIL_TRANSPORT'), ['mail', 'smtp', 'log'], true)) {
             throw new RuntimeException('MAIL_TRANSPORT must be mail, smtp or log.');
+        }
+        $fromAddress = $this->string('MAIL_FROM_ADDRESS');
+        if (!filter_var($fromAddress, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $fromAddress)) {
+            throw new RuntimeException('MAIL_FROM_ADDRESS must be a valid email address.');
+        }
+        $fromName = $this->string('MAIL_FROM_NAME', $this->string('APP_NAME'));
+        if ($fromName === '' || strlen($fromName) > 100 || preg_match('/[\x00-\x1f\x7f]/', $fromName)) {
+            throw new RuntimeException('MAIL_FROM_NAME must contain 1 to 100 printable characters.');
         }
         foreach (['MAGICLINK_ALLOW_ANY_EMAIL', 'MAIL_AUTO_DISPATCH'] as $boolean) {
             if (!in_array(strtolower($this->string($boolean)), ['1', '0', 'true', 'false', 'yes', 'no', 'on', 'off'], true)) {
@@ -222,6 +261,31 @@ final class Config
                 throw new RuntimeException('Unencrypted SMTP is disabled in production.');
             }
         }
+        $handoffRedirect = $this->string('HANDOFF_REDIRECT_URL');
+        $handoffSecret = $this->string('HANDOFF_CLIENT_SECRET');
+        if (($handoffRedirect === '') !== ($handoffSecret === '')) {
+            throw new RuntimeException('HANDOFF_REDIRECT_URL and HANDOFF_CLIENT_SECRET must be configured together.');
+        }
+        if ($handoffRedirect !== '') {
+            $handoffParts = parse_url($handoffRedirect);
+            if (!filter_var($handoffRedirect, FILTER_VALIDATE_URL) || !in_array($handoffParts['scheme'] ?? '', ['http', 'https'], true) || empty($handoffParts['host']) || isset($handoffParts['user']) || isset($handoffParts['pass']) || isset($handoffParts['fragment'])) {
+                throw new RuntimeException('HANDOFF_REDIRECT_URL must be an absolute http or https URL without credentials or a fragment.');
+            }
+            if ($this->string('APP_ENV') === 'production' && ($handoffParts['scheme'] ?? '') !== 'https') {
+                throw new RuntimeException('Production HANDOFF_REDIRECT_URL must use https.');
+            }
+            $decodedHandoffSecret = base64_decode($handoffSecret, true);
+            if ($decodedHandoffSecret === false || strlen($decodedHandoffSecret) !== 32) {
+                throw new RuntimeException('HANDOFF_CLIENT_SECRET must be base64-encoded 32-byte material.');
+            }
+            parse_str((string) ($handoffParts['query'] ?? ''), $handoffQuery);
+            $handoffKeys = is_array($handoffQuery)
+                ? array_map(static fn (string|int $key): string => strtolower((string) $key), array_keys($handoffQuery))
+                : [];
+            if (in_array('code', $handoffKeys, true) || in_array('state', $handoffKeys, true)) {
+                throw new RuntimeException('HANDOFF_REDIRECT_URL must not contain code or state query parameters.');
+            }
+        }
         if (!$this->bool('MAGICLINK_ALLOW_ANY_EMAIL') && $this->list('MAGICLINK_ALLOWED_EMAILS') === [] && $this->list('MAGICLINK_ALLOWED_DOMAINS') === []) {
             throw new RuntimeException('Configure MAGICLINK_ALLOWED_EMAILS or MAGICLINK_ALLOWED_DOMAINS.');
         }
@@ -238,6 +302,12 @@ final class Config
         if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/D', $this->string('SESSION_NAME', 'magiclink_session'))) {
             throw new RuntimeException('SESSION_NAME must contain 1 to 64 safe characters.');
         }
+        if (!in_array($this->string('SESSION_STORAGE', 'files'), ['files', 'configured'], true)) {
+            throw new RuntimeException('SESSION_STORAGE must be files or configured.');
+        }
+        if ($this->string('SESSION_STORAGE', 'files') === 'files' && ($this->string('SESSION_SAVE_PATH') === '' || preg_match('/[\x00-\x1f\x7f]/', $this->string('SESSION_SAVE_PATH')))) {
+            throw new RuntimeException('SESSION_SAVE_PATH must be a non-empty filesystem path.');
+        }
         if ($this->int('MAGICLINK_TTL_SECONDS', 0) < 120 || $this->int('MAGICLINK_TTL_SECONDS', 0) > 3600) {
             throw new RuntimeException('MAGICLINK_TTL_SECONDS must be between 120 and 3600.');
         }
@@ -246,10 +316,16 @@ final class Config
                 throw new RuntimeException($limit . ' must be between 1 and 1000.');
             }
         }
+        if ($this->int('MAGICLINK_GLOBAL_LIMIT', 0) < 1 || $this->int('MAGICLINK_GLOBAL_LIMIT', 0) > 1000000) {
+            throw new RuntimeException('MAGICLINK_GLOBAL_LIMIT must be between 1 and 1000000.');
+        }
         foreach (['MAGICLINK_EXCHANGE_IP_LIMIT', 'MAGICLINK_EXCHANGE_SELECTOR_LIMIT'] as $limit) {
             if ($this->int($limit, 0) < 1 || $this->int($limit, 0) > 10000) {
                 throw new RuntimeException($limit . ' must be between 1 and 10000.');
             }
+        }
+        if ($this->int('MAGICLINK_EXCHANGE_GLOBAL_LIMIT', 0) < 1 || $this->int('MAGICLINK_EXCHANGE_GLOBAL_LIMIT', 0) > 1000000) {
+            throw new RuntimeException('MAGICLINK_EXCHANGE_GLOBAL_LIMIT must be between 1 and 1000000.');
         }
         foreach ([
             'MAGICLINK_RATE_WINDOW' => [60, 86400],
@@ -258,6 +334,9 @@ final class Config
             'HTTP_MAX_BODY_BYTES' => [1024, 1048576],
             'MAIL_MAX_ATTEMPTS' => [1, 20],
             'MAIL_LOCK_TIMEOUT_SECONDS' => [30, 3600],
+            'HANDOFF_TRANSACTION_TTL_SECONDS' => [120, 3600],
+            'HANDOFF_CODE_TTL_SECONDS' => [30, 300],
+            'HANDOFF_INIT_WINDOW' => [60, 86400],
             'MAINTENANCE_INTERVAL_SECONDS' => [60, 86400],
             'SESSION_IDLE_SECONDS' => [300, 2592000],
             'SESSION_ABSOLUTE_SECONDS' => [3600, 31536000],
@@ -267,7 +346,10 @@ final class Config
                 throw new RuntimeException(sprintf('%s must be between %d and %d.', $name, $minimum, $maximum));
             }
         }
-        foreach (['MAGICLINK_RETENTION_SECONDS', 'AUDIT_RETENTION_SECONDS', 'MAIL_RETENTION_SECONDS'] as $retention) {
+        if ($this->int('HANDOFF_INIT_LIMIT', 0) < 1 || $this->int('HANDOFF_INIT_LIMIT', 0) > 1000000) {
+            throw new RuntimeException('HANDOFF_INIT_LIMIT must be between 1 and 1000000.');
+        }
+        foreach (['MAGICLINK_RETENTION_SECONDS', 'AUDIT_RETENTION_SECONDS', 'MAIL_RETENTION_SECONDS', 'HANDOFF_RETENTION_SECONDS'] as $retention) {
             if ($this->int($retention, 0) < 3600 || $this->int($retention, 0) > 31536000) {
                 throw new RuntimeException($retention . ' must be between 3600 and 31536000.');
             }

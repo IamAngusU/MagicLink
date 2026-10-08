@@ -8,7 +8,7 @@ use RuntimeException;
 
 final class Database
 {
-    private const SCHEMA_VERSION = 2;
+    private const SCHEMA_VERSION = 4;
 
     private function __construct(private PDO $pdo, private string $driver) {}
 
@@ -29,17 +29,46 @@ final class Database
             $pdo->exec('PRAGMA journal_mode = WAL');
             $pdo->exec('PRAGMA busy_timeout = 5000');
         } else {
+            if (!extension_loaded('mysqlnd')) {
+                throw new RuntimeException('MySQL deployments require the fail-closed mysqlnd PDO backend.');
+            }
             $dsn = sprintf(
                 'mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
                 $config->string('DB_HOST', '127.0.0.1'),
                 $config->int('DB_PORT', 3306),
                 $config->string('DB_DATABASE')
             );
-            $pdo = new PDO($dsn, $config->string('DB_USERNAME'), $config->string('DB_PASSWORD'));
+            $options = [];
+            $sslMode = $config->string('DB_SSL_MODE', 'auto');
+            $sslCa = $config->string('DB_SSL_CA');
+            if ($sslMode === 'auto') {
+                $sslMode = $sslCa === '' ? 'disabled' : 'verify_identity';
+            }
+            $tlsRequired = $sslMode === 'verify_identity';
+            if ($tlsRequired) {
+                if (!preg_match('~^(?:[A-Za-z]:[\\\\/]|/)~', $sslCa)) {
+                    $sslCa = $config->root() . '/' . ltrim($sslCa, '/\\');
+                }
+                if (!is_file($sslCa) || !is_readable($sslCa)) {
+                    throw new RuntimeException('DB_SSL_CA must point to a readable CA certificate.');
+                }
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+                if (!defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
+                    throw new RuntimeException('This PDO MySQL build cannot verify the database server identity.');
+                }
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            }
+            $pdo = new PDO($dsn, $config->string('DB_USERNAME'), $config->string('DB_PASSWORD'), $options);
         }
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
         $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+        if ($driver === 'mysql' && ($tlsRequired ?? false)) {
+            $tls = $pdo->query("SHOW STATUS LIKE 'Ssl_cipher'")->fetch();
+            if (!is_array($tls) || trim((string) ($tls['Value'] ?? '')) === '') {
+                throw new RuntimeException('MySQL did not negotiate the required TLS connection.');
+            }
+        }
         return new self($pdo, $driver);
     }
 
@@ -63,6 +92,28 @@ final class Database
 
     public function migrate(): void
     {
+        if ($this->driver !== 'mysql') {
+            $this->migrateUnlocked();
+            return;
+        }
+
+        $database = (string) $this->pdo->query('SELECT DATABASE()')->fetchColumn();
+        $lockName = 'magiclink-schema-' . substr(hash('sha256', $database), 0, 32);
+        $lock = $this->pdo->prepare('SELECT GET_LOCK(?, 30)');
+        $lock->execute([$lockName]);
+        if ((int) $lock->fetchColumn() !== 1) {
+            throw new RuntimeException('Could not acquire the MySQL schema migration lock.');
+        }
+        try {
+            $this->migrateUnlocked();
+        } finally {
+            $release = $this->pdo->prepare('SELECT RELEASE_LOCK(?)');
+            $release->execute([$lockName]);
+        }
+    }
+
+    private function migrateUnlocked(): void
+    {
         $id = $this->driver === 'sqlite' ? 'INTEGER PRIMARY KEY AUTOINCREMENT' : 'BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT';
         $text = 'TEXT';
         $this->pdo->exec("CREATE TABLE IF NOT EXISTS magic_links (
@@ -81,6 +132,7 @@ final class Database
         )");
         $this->ensureColumn('magic_links', 'verified_at', 'BIGINT NULL');
         $this->createIndex('idx_magic_links_email', 'magic_links', 'email_lookup, created_at');
+        $this->createIndex('idx_magic_links_expiry', 'magic_links', 'expires_at, id');
         $this->pdo->exec("CREATE TABLE IF NOT EXISTS rate_limits (
             id {$id},
             bucket CHAR(64) NOT NULL,
@@ -122,6 +174,28 @@ final class Database
             created_at BIGINT NOT NULL
         )");
         $this->createIndex('idx_mail_outbox_ready', 'mail_outbox', 'status, available_at, id');
+        $this->createIndex('idx_mail_outbox_subject_status', 'mail_outbox', 'subject_hash, status');
+        $this->createIndex('idx_mail_outbox_retention', 'mail_outbox', 'status, created_at, id');
+        $this->pdo->exec("CREATE TABLE IF NOT EXISTS auth_handoffs (
+            id {$id},
+            request_hash CHAR(64) NOT NULL UNIQUE,
+            state_cipher {$text} NOT NULL,
+            redirect_uri_hash CHAR(64) NOT NULL,
+            pkce_challenge CHAR(43) NOT NULL,
+            session_binding CHAR(64) NULL,
+            code_hash CHAR(64) NULL UNIQUE,
+            code_cipher {$text} NULL,
+            email_cipher {$text} NULL,
+            subject_hash CHAR(64) NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            expires_at BIGINT NOT NULL,
+            authorized_at BIGINT NULL,
+            code_expires_at BIGINT NULL,
+            consumed_at BIGINT NULL,
+            created_at BIGINT NOT NULL
+        )");
+        $this->createIndex('idx_auth_handoffs_expiry', 'auth_handoffs', 'expires_at, id');
+        $this->createIndex('idx_auth_handoffs_status_expiry', 'auth_handoffs', 'status, expires_at, id');
         $this->pdo->exec("CREATE TABLE IF NOT EXISTS maintenance_state (
             name VARCHAR(64) PRIMARY KEY,
             last_run BIGINT NOT NULL

@@ -8,6 +8,7 @@ use IamAngusU\MagicLink\Database;
 use IamAngusU\MagicLink\Exception\InvalidLink;
 use IamAngusU\MagicLink\Exception\PayloadTooLarge;
 use IamAngusU\MagicLink\Exception\RateLimited;
+use IamAngusU\MagicLink\HandoffService;
 use IamAngusU\MagicLink\Http\Request;
 use IamAngusU\MagicLink\Http\Response;
 use IamAngusU\MagicLink\Mail\MagicLinkMessage;
@@ -135,10 +136,11 @@ $database->migrate();
 $crypto = new Crypto($config->appKey());
 $mailer = new TestMailer();
 $service = new MagicLinkService($database->pdo(), $config, $crypto);
+$handoffService = new HandoffService($database->pdo(), $config, $crypto);
 $outbox = new OutboxWorker($database->pdo(), $config, $crypto, new MagicLinkMessage($config, $mailer));
 $maintenance = new MaintenanceService($database->pdo(), $config);
 $tuning = new Tuning($config, $database->pdo());
-$app = new App($config, $service, new StateCatalog($root, 'en'), $outbox, $maintenance, $tuning);
+$app = new App($config, $service, $handoffService, new StateCatalog($root, 'en'), $outbox, $maintenance, $tuning);
 Session::start($config);
 
 // Queue boundary: public requests do no network mail work and denied identities look identical.

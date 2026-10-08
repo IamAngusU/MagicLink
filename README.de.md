@@ -16,9 +16,9 @@
 
 <p align="center">
   <a href="https://github.com/IamAngusU/MagicLink/releases/latest"><strong>Fertiges ZIP herunterladen</strong></a>
-  · <a href="docs/API.md">Headless API</a>
-  · <a href="docs/CONFIGURATION.md">Config</a>
-  · <a href="docs/OPERATIONS.md">Betrieb</a>
+  · <a href="docs/API.de.md">Headless API</a>
+  · <a href="docs/CONFIGURATION.de.md">Config</a>
+  · <a href="docs/OPERATIONS.de.md">Betrieb</a>
   · <a href="SECURITY.md">Security</a>
 </p>
 
@@ -36,13 +36,19 @@ MagicLink kapselt diesen Unterbau hinter einer kleinen, versionierten API:
 
 - das Geheimnis bleibt im URL-Fragment und wird erst per geschütztem POST verbraucht;
 - ausschließlich das Gerät mit dem Link erhält die Sitzung;
-- State- und Batch-Endpunkte liefern stabile Codes für deine eigene UI;
+- State- und Batch-Endpunkte liefern stabile Codes für deine eigene UI, aber
+  weder Identität noch Token;
 - E-Mail läuft über eine verschlüsselte Outbox mit Retry und gleicher Außenwirkung
   für erlaubte und nicht erlaubte Adressen;
+- die eingebauten deutschen und englischen Mails lassen sich durch lokale,
+  einfache UTF-8-Templates ersetzen und ohne Versand vorschauen;
+- ein optionaler RP-initiierter, State- und PKCE-gebundener Handoff übergibt die
+  bestätigte Identität an ein anderes Backend, ohne Session-Cookies zu teilen;
 - Rate Limits, Request-Größen, Proxy-Vertrauen, Sessions, CORS und Retention sind
   sichere Defaults – und vollständig über `.env` steuerbar;
-- `auto` wählt kleine SQLite- oder größere MySQL-Batches, explizite Werte gewinnen
-  immer.
+- ein explizites globales Request-Budget und eine begrenzte Pending-Queue bremsen
+  vor Überlast; `auto` dimensioniert Queue- und Batch-Limits für SQLite oder
+  MySQL, explizite Werte gewinnen immer.
 
 Kein Framework und kein Composer-Zwang: PHP 8.2+, PDO und Sodium oder OpenSSL.
 
@@ -50,7 +56,7 @@ Kein Framework und kein Composer-Zwang: PHP 8.2+, PDO und Sodium oder OpenSSL.
 
 ## In drei Minuten
 
-1. [Das aktuelle ZIP laden](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip) und hochladen.
+1. [Das aktuelle uploadfertige ZIP laden](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip) und hochladen.
 2. Mit Shell einfach `php bin/install.php` starten und drei Fragen beantworten.
 3. Ohne Shell `.env.example` nach `.env` kopieren und drei Werte setzen:
 
@@ -92,20 +98,45 @@ bündeln. Antworten verwenden immer dieselbe Form:
 `{ ok, code, data, error, meta }`.
 
 Alle Endpunkte, States, CORS-Regeln und ein kompletter Browser-Flow stehen in der
-[Headless-API-Doku](docs/API.md).
+[Headless-API-Doku](docs/API.de.md).
+
+Für ein getrenntes Backend aktivierst du den optionalen Server-Handoff. Dieses
+Backend startet die Transaktion, bindet erwarteten `state` und PKCE-Verifier an
+die startende RP-Browser-Session und schickt den Browser zur Authorize-URL.
+Derselbe Browser meldet sich an; der Callback prüft `state`, tauscht den
+kurzlebigen Code,
+entfernt ihn aus der URL und erstellt seine eigene Session. Details:
+[Integration](docs/INTEGRATION.de.md).
+
+## Deine Mail, dein Design
+
+Kopiere `resources/mail-templates` nach `storage/mail-templates`, bearbeite die
+rohen Dateien `subject.txt`, `plain.txt` und `html.html` und setze
+`MAIL_TEMPLATE_DIR=storage/mail-templates`. Die Vorschau erzeugt weder gültigen
+Token noch Mail:
+
+```bash
+php bin/mail-preview.php --locale=de --format=html > preview.html
+```
+
+Nur dokumentierte Platzhalter werden akzeptiert, HTML-Werte werden escaped und
+das Template-Verzeichnis bleibt lokal außerhalb von `public/`. Mehr steht unter
+[Konfiguration](docs/CONFIGURATION.de.md#eigene-mail-templates).
 
 ## Wenn es größer wird
 
-Ohne Setup wird nach der HTTP-Antwort genau eine Mail abgearbeitet. Bei mehr
-Traffic übernimmt ein Worker die Queue:
+Ohne Setup versucht MagicLink nach der HTTP-Antwort eine fällige Queue-Zeile.
+Bei mehr Traffic übernimmt ein Worker die Queue:
 
 ```bash
 php bin/worker.php --loop
 php bin/maintain.php --all
+php bin/status.php
 ```
 
 Für Shared-Hosting-Cron genügt `php bin/worker.php --once`. MySQL, Workerzahl,
-Batch-Regeln, Retry-Verhalten und Retention erklärt [Betrieb unter Last](docs/OPERATIONS.md).
+Queue-Kapazität, Zustellsemantik, Retries und Retention erklärt
+[Betrieb unter Last](docs/OPERATIONS.de.md).
 Der [reproduzierbare Performance-Check](docs/PERFORMANCE.md) misst den SQLite-Hot-Path
 getrennt von HTTP-, SMTP- und Netzwerklatenz.
 
@@ -120,6 +151,10 @@ php bin/check.php
 ```
 
 Lies außerdem [`SECURITY.md`](SECURITY.md) und das [Threat Model](docs/THREAT-MODEL.md).
+Das optionale Client-Secret liegt auf beiden Servern, der PKCE-Verifier nur im
+Relying-Party-Backend. Der Callback prüft `state`, tauscht den Code sofort und
+leitet auf eine saubere URL weiter; niemals diese Werte an JavaScript geben oder
+den State-Endpunkt als Identitätsnachweis behandeln.
 
 Badge und Sprach-Squircle stammen aus `IamAngusU/Badges`. Der anklickbare
 Stack-Marquee führt zu [`IamAngusU/icon-marquee`](https://github.com/IamAngusU/icon-marquee).

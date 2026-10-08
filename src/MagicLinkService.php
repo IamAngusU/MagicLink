@@ -11,10 +11,12 @@ use Throwable;
 final class MagicLinkService
 {
     private WriteTransaction $transaction;
+    private Tuning $tuning;
 
     public function __construct(private PDO $pdo, private Config $config, private Crypto $crypto)
     {
         $this->transaction = new WriteTransaction($pdo);
+        $this->tuning = new Tuning($config, $pdo);
     }
 
     /** @return array{selector:string,state:string,expires_at:int,masked_email:string} */
@@ -27,6 +29,7 @@ final class MagicLinkService
 
         $this->beginWrite();
         try {
+            $this->rateLimit('request|global', $this->config->int('MAGICLINK_GLOBAL_LIMIT', 1000), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
             $this->rateLimit('request|ip|' . $ipHash, $this->config->int('MAGICLINK_IP_LIMIT', 10), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
             if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) {
                 $this->audit('magic_link.invalid_request', $emailLookup, $ipHash, []);
@@ -35,6 +38,16 @@ final class MagicLinkService
             }
 
             $this->rateLimit('request|email|' . $emailLookup, $this->config->int('MAGICLINK_EMAIL_LIMIT', 5), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
+            $pendingMax = $this->tuning->pendingMailMax();
+            $queued = $this->pdo->query("SELECT COUNT(*) FROM (SELECT id FROM mail_outbox WHERE status IN ('pending','sending') LIMIT {$pendingMax}) AS active_mail");
+            if ((int) $queued->fetchColumn() >= $pendingMax) {
+                // Reject every identity uniformly. Allowing only an identity
+                // with an existing pending row to proceed would expose a
+                // queue-capacity membership oracle through 202 versus 429.
+                // Keep the counters so this expensive path remains bounded.
+                $this->transaction->commit();
+                throw new RateLimited('Mail delivery is temporarily at capacity. Please try again later.', 60);
+            }
             $deliverable = $this->emailAllowed($email);
             $selector = 'ml_' . bin2hex(random_bytes(12));
             $token = $this->crypto->token();
@@ -153,6 +166,7 @@ final class MagicLinkService
         $this->beginWrite();
         try {
             $window = $this->config->int('MAGICLINK_EXCHANGE_WINDOW', 900);
+            $this->rateLimit('exchange|global', $this->config->int('MAGICLINK_EXCHANGE_GLOBAL_LIMIT', 1000), $window, $now);
             $this->rateLimit('exchange|ip|' . $ipHash, $this->config->int('MAGICLINK_EXCHANGE_IP_LIMIT', 60), $window, $now);
             if (!preg_match('/^ml_[a-f0-9]{24}$/D', $selector) || strlen($token) < 40 || strlen($token) > 100) {
                 $this->transaction->commit();
@@ -221,14 +235,14 @@ final class MagicLinkService
         $prefix = $driver === 'sqlite' ? 'INSERT OR IGNORE' : 'INSERT IGNORE';
         $insert = $this->pdo->prepare("{$prefix} INTO rate_limit_counters(bucket,window_started,hits,expires_at) VALUES(?,?,0,?)");
         $insert->execute([$bucket, $windowStarted, $windowStarted + ($window * 2)]);
-        $suffix = $driver === 'mysql' ? ' FOR UPDATE' : '';
-        $select = $this->pdo->prepare('SELECT hits FROM rate_limit_counters WHERE bucket = ? AND window_started = ?' . $suffix);
-        $select->execute([$bucket, $windowStarted]);
-        if ((int) $select->fetchColumn() >= $limit) {
+        $update = $this->pdo->prepare(
+            'UPDATE rate_limit_counters SET hits = hits + 1 '
+            . 'WHERE bucket = ? AND window_started = ? AND hits < ?'
+        );
+        $update->execute([$bucket, $windowStarted, $limit]);
+        if ($update->rowCount() !== 1) {
             throw new RateLimited('Too many requests. Please try again later.', max(1, ($windowStarted + $window) - $now));
         }
-        $update = $this->pdo->prepare('UPDATE rate_limit_counters SET hits = hits + 1 WHERE bucket = ? AND window_started = ?');
-        $update->execute([$bucket, $windowStarted]);
     }
 
     /** @param array<string,string|int|bool> $metadata */

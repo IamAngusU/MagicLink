@@ -25,9 +25,36 @@ final class Tuning
         return $this->automatic('MAIL_WORKER_BATCH', $this->driver === 'sqlite' ? 25 : 100, 1, 250);
     }
 
+    public function pendingMailMax(): int
+    {
+        return $this->automatic('MAIL_PENDING_MAX', $this->driver === 'sqlite' ? 500 : 5000, 10, 100000);
+    }
+
     public function maintenanceBatch(): int
     {
-        return $this->automatic('MAINTENANCE_BATCH', $this->driver === 'sqlite' ? 250 : 1000, 10, 5000);
+        $interval = $this->config->int('MAINTENANCE_INTERVAL_SECONDS', 300);
+        $rateRows = $this->rowsPerInterval(
+            $this->config->int('MAGICLINK_GLOBAL_LIMIT', 1000) * 3,
+            $this->config->int('MAGICLINK_RATE_WINDOW', 3600),
+            $interval,
+        ) + $this->rowsPerInterval(
+            $this->config->int('MAGICLINK_EXCHANGE_GLOBAL_LIMIT', 1000) * 3,
+            $this->config->int('MAGICLINK_EXCHANGE_WINDOW', 900),
+            $interval,
+        );
+        $handoffRows = $this->rowsPerInterval(
+            $this->config->int('HANDOFF_INIT_LIMIT', 1000),
+            $this->config->int('HANDOFF_INIT_WINDOW', 600),
+            $interval,
+        );
+        // Keep 25% headroom over the highest admitted row rate. The floor
+        // avoids tiny batches on quiet installations; the hard cap still
+        // bounds lock duration and remains operator-overridable.
+        $automatic = min(5000, max(
+            $this->driver === 'sqlite' ? 250 : 1000,
+            (int) ceil(max($rateRows, $handoffRows) * 1.25),
+        ));
+        return $this->automatic('MAINTENANCE_BATCH', $automatic, 10, 5000);
     }
 
     public function pollAfterMs(int $itemCount = 1): int
@@ -52,5 +79,9 @@ final class Tuning
         }
         return $value;
     }
-}
 
+    private function rowsPerInterval(int $limit, int $window, int $interval): int
+    {
+        return (int) ceil(($limit * $interval) / max(1, $window));
+    }
+}

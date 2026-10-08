@@ -31,8 +31,8 @@ Start with `MAIL_TRANSPORT=mail` when the provider exposes a configured PHP mail
 transport. Use `smtp` when the provider gives explicit SMTP credentials. Never
 commit those credentials; `.env` is ignored by Git.
 
-Der Zero-Setup-Modus liefert nach der HTTP-Antwort eine Queue-Position aus. Bei
-einem Cron-fähigen Tarif ist der robustere Betrieb:
+Zero-setup mode processes one queue item after the HTTP response. On a plan with
+cron support, the more predictable setup is:
 
 ```dotenv
 MAIL_AUTO_DISPATCH=false
@@ -42,7 +42,12 @@ MAIL_AUTO_DISPATCH=false
 * * * * * /usr/bin/php /home/account/magiclink/bin/worker.php --once >/dev/null 2>&1
 ```
 
-Mehr dazu steht unter [Betrieb und Last](OPERATIONS.md).
+See [operations and load](OPERATIONS.md) for the worker, cleanup and scaling path.
+
+The supplied `.htaccess` and `public/.user.ini` cap request bodies at 16 KiB
+before PHP parses them. If the host ignores either file, apply the equivalent
+limit in its control panel. When changing `HTTP_MAX_BODY_BYTES`, keep those
+host-level limits in sync.
 
 ## MySQL instead of SQLite
 

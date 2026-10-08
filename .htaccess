@@ -1,4 +1,5 @@
 Options -Indexes
+LimitRequestBody 16384
 RewriteEngine On
 
 RewriteRule ^(?:bin|config|docs|resources|src|storage|templates|tests|vendor)(?:/|$) - [F,L,NC]

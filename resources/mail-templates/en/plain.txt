@@ -1,0 +1,6 @@
+Open this link to sign in to {{app_name}}:
+
+{{magic_link}}
+
+The link is valid for {{expires_minutes}} minutes and can be used once.
+If you did not request it, you can safely ignore this email.

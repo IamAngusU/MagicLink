@@ -17,4 +17,39 @@ foreach ($iterator as $file) {
     $output = [];
 }
 if ($failed) exit(1);
-require $root . '/tests/run.php';
+
+$version = trim((string) file_get_contents($root . '/VERSION'));
+$changelog = (string) file_get_contents($root . '/CHANGELOG.md');
+if (!preg_match('/^[0-9]+\.[0-9]+\.[0-9]+$/D', $version)
+    || !preg_match('/^##\s+([0-9]+\.[0-9]+\.[0-9]+)/m', $changelog, $match)
+    || !hash_equals($version, $match[1])
+) {
+    fwrite(STDERR, "VERSION must be semantic and match the newest CHANGELOG entry.\n");
+    exit(1);
+}
+
+$tests = [
+    'tests/platform-hardening.php',
+    'tests/mail-templates.php',
+    'tests/smtp-transport.php',
+];
+if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+    $tests[] = 'tests/mail-worker-hardening.php';
+}
+$tests[] = 'tests/run.php';
+if (in_array('sqlite', PDO::getAvailableDrivers(), true)) {
+    $tests[] = 'tests/handoff-security.php';
+}
+
+ob_start();
+foreach ($tests as $test) {
+    (static function (string $path): void {
+        require $path;
+    })($root . '/' . $test);
+    if (session_status() === PHP_SESSION_ACTIVE && !session_write_close()) {
+        throw new RuntimeException('A test session could not be persisted.');
+    }
+    $_SESSION = [];
+    session_id('');
+}
+ob_end_flush();

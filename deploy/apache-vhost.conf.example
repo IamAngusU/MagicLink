@@ -5,6 +5,7 @@
     <Directory /var/www/magiclink/public>
         AllowOverride All
         Options -Indexes
+        LimitRequestBody 16384
         Require all granted
     </Directory>
 

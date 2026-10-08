@@ -42,8 +42,8 @@ final class Request
             throw new PayloadTooLarge('Request body is too large.');
         }
 
-        $contentType = strtolower($this->header('Content-Type'));
-        if (str_contains($contentType, 'application/json')) {
+        $contentType = strtolower(trim(explode(';', $this->header('Content-Type'), 2)[0]));
+        if ($contentType === 'application/json') {
             $body = file_get_contents('php://input', false, null, 0, $this->maxBodyBytes + 1);
             if (!is_string($body) || strlen($body) > $this->maxBodyBytes) {
                 throw new PayloadTooLarge('Request body is too large.');
@@ -58,6 +58,10 @@ final class Request
             }
             return $this->input = $decoded;
         }
+        if ($contentType !== '' && $contentType !== 'application/x-www-form-urlencoded') {
+            throw new BadRequest('Content-Type must be application/json or application/x-www-form-urlencoded.');
+        }
+        $this->measureFormInput($_POST);
         return $this->input = $_POST;
     }
 
@@ -69,6 +73,8 @@ final class Request
             $key = 'CONTENT_TYPE';
         } elseif ($normalized === 'content-length') {
             $key = 'CONTENT_LENGTH';
+        } elseif ($normalized === 'authorization' && !isset($_SERVER[$key])) {
+            $key = 'REDIRECT_HTTP_AUTHORIZATION';
         }
         return trim((string) ($_SERVER[$key] ?? ''));
     }
@@ -113,6 +119,38 @@ final class Request
             return $this->requestId = $provided;
         }
         return $this->requestId = bin2hex(random_bytes(12));
+    }
+
+    /** @param array<mixed> $input */
+    private function measureFormInput(array $input): void
+    {
+        $bytes = 0;
+        $nodes = 0;
+        $stack = [[$input, 0]];
+        while ($stack !== []) {
+            [$values, $depth] = array_pop($stack);
+            if ($depth > 4) {
+                throw new PayloadTooLarge('Request body nesting is too deep.');
+            }
+            foreach ($values as $key => $value) {
+                $nodes++;
+                $bytes += strlen((string) $key);
+                if ($nodes > 512 || $bytes > $this->maxBodyBytes) {
+                    throw new PayloadTooLarge('Request body is too large.');
+                }
+                if (is_array($value)) {
+                    $stack[] = [$value, $depth + 1];
+                    continue;
+                }
+                if (!is_string($value)) {
+                    throw new BadRequest('Form fields must contain strings or lists.');
+                }
+                $bytes += strlen($value);
+                if ($bytes > $this->maxBodyBytes) {
+                    throw new PayloadTooLarge('Request body is too large.');
+                }
+            }
+        }
     }
 
     private function isTrustedProxy(string $address): bool

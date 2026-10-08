@@ -1,0 +1,6 @@
+Öffne diesen Link, um dich bei {{app_name}} anzumelden:
+
+{{magic_link}}
+
+Der Link ist {{expires_minutes}} Minuten gültig und kann einmal verwendet werden.
+Wenn du ihn nicht angefordert hast, kannst du diese E-Mail einfach ignorieren.

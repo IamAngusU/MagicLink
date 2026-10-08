@@ -19,12 +19,12 @@ final class MaintenanceService
     public function runIfDue(int $batch, bool $force = false): array
     {
         $now = time();
-        $interval = $this->config->int('MAINTENANCE_INTERVAL_SECONDS', 900);
+        $interval = $this->config->int('MAINTENANCE_INTERVAL_SECONDS', 300);
         if (!$force) {
             $check = $this->pdo->prepare('SELECT last_run FROM maintenance_state WHERE name = ?');
             $check->execute(['cleanup']);
             if ((int) $check->fetchColumn() > $now - $interval) {
-                return ['links' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
+                return ['links' => 0, 'handoffs' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
             }
         }
         $this->beginWrite();
@@ -33,7 +33,7 @@ final class MaintenanceService
             $claim->execute([$now, 'cleanup', $force ? PHP_INT_MAX : $now - $interval]);
             if ($claim->rowCount() !== 1) {
                 $this->transaction->commit();
-                return ['links' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
+                return ['links' => 0, 'handoffs' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
             }
             $this->transaction->commit();
         } catch (Throwable $error) {
@@ -44,10 +44,17 @@ final class MaintenanceService
         $batch = max(10, min(5000, $batch));
         $result = [];
         $result['links'] = $this->deleteBatch('magic_links', 'expires_at < ?', [$now - $this->config->int('MAGICLINK_RETENTION_SECONDS', 604800)], $batch);
+        $result['handoffs'] = $this->deleteBatch('auth_handoffs', 'expires_at < ?', [$now - $this->config->int('HANDOFF_RETENTION_SECONDS', 86400)], $batch);
         $result['rates'] = $this->deleteBatch('rate_limit_counters', 'expires_at < ?', [$now], $batch);
         $result['legacy_rates'] = $this->deleteBatch('rate_limits', 'created_at < ?', [$now - 86400], $batch);
         $result['audit'] = $this->deleteBatch('audit_events', 'created_at < ?', [$now - $this->config->int('AUDIT_RETENTION_SECONDS', 2592000)], $batch);
         $result['outbox'] = $this->deleteBatch('mail_outbox', "status IN ('sent','failed','decoy','cancelled') AND created_at < ?", [$now - $this->config->int('MAIL_RETENTION_SECONDS', 604800)], $batch);
+        if (!$force && max($result) >= $batch) {
+            // A bounded pass found more work. Make the next request eligible to
+            // continue instead of waiting a full interval or looping here.
+            $continue = $this->pdo->prepare('UPDATE maintenance_state SET last_run = ? WHERE name = ? AND last_run = ?');
+            $continue->execute([$now - $interval, 'cleanup', $now]);
+        }
         return $result;
     }
 

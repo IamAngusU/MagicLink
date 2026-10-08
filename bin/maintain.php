@@ -13,7 +13,7 @@ try {
     $batch = $configuredBatch === 'auto' || $configuredBatch === false
         ? $kernel->tuning->maintenanceBatch()
         : max(10, min(5000, (int) $configuredBatch));
-    $totals = ['links' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
+    $totals = ['links' => 0, 'handoffs' => 0, 'rates' => 0, 'legacy_rates' => 0, 'audit' => 0, 'outbox' => 0];
     $cycles = 0;
     do {
         $result = $kernel->maintenance->runIfDue($batch, true);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace IamAngusU\MagicLink;
 
 use IamAngusU\MagicLink\Exception\BadRequest;
+use IamAngusU\MagicLink\Exception\InvalidHandoff;
 use IamAngusU\MagicLink\Exception\InvalidLink;
 use IamAngusU\MagicLink\Exception\PayloadTooLarge;
 use IamAngusU\MagicLink\Exception\RateLimited;
@@ -19,6 +20,7 @@ final class App
     public function __construct(
         private Config $config,
         private MagicLinkService $service,
+        private HandoffService $handoffs,
         private StateCatalog $states,
         private OutboxWorker $outbox,
         private MaintenanceService $maintenance,
@@ -52,9 +54,10 @@ final class App
             if ($this->config->bool('MAIL_AUTO_DISPATCH', true) && ($this->deliveryQueued || random_int(1, 20) === 1)) {
                 $this->outbox->run(1);
             }
-            if (random_int(1, 100) === 1) {
-                $this->maintenance->runIfDue($this->tuning->maintenanceBatch());
-            }
+            // The due check is one indexed read. Running it after every
+            // response makes cleanup cadence deterministic without adding
+            // retention work to visible request latency.
+            $this->maintenance->runIfDue($this->tuning->maintenanceBatch());
         });
     }
 
@@ -86,6 +89,10 @@ final class App
             'GET /api/v1/state' => $this->apiState($request),
             'POST /api/v1/states' => $this->apiStates($request),
             'POST /api/v1/exchange' => $this->apiExchange($request),
+            'POST /api/v1/handoffs/transactions' => $this->apiHandoffTransaction($request),
+            'GET /api/v1/handoffs/authorize' => $this->apiHandoffStart($request),
+            'POST /api/v1/handoffs/authorize' => $this->apiHandoffAuthorize($request),
+            'POST /api/v1/handoffs/exchange' => $this->apiHandoffExchange($request),
             'GET /api/v1/session' => $this->apiSession($request),
             'POST /api/v1/logout' => $this->apiLogout($request),
             'GET /health' => Response::json(['ok' => true, 'service' => 'magic-link', 'version' => 'v1']),
@@ -207,10 +214,18 @@ final class App
                 'state' => $this->config->url('/api/v1/state'),
                 'states' => $this->config->url('/api/v1/states'),
                 'exchange' => $this->config->url('/api/v1/exchange'),
+                'handoff_transaction' => $this->config->url('/api/v1/handoffs/transactions'),
+                'handoff_authorize' => $this->config->url('/api/v1/handoffs/authorize'),
+                'handoff_exchange' => $this->config->url('/api/v1/handoffs/exchange'),
                 'session' => $this->config->url('/api/v1/session'),
                 'logout' => $this->config->url('/api/v1/logout'),
             ],
-            'features' => ['batch_states' => true, 'queued_mail' => true, 'cross_device_session_grant' => false],
+            'features' => [
+                'batch_states' => true,
+                'queued_mail' => true,
+                'cross_device_session_grant' => false,
+                'server_handoff' => $this->handoffs->enabled(),
+            ],
             'defaults' => ['ttl_seconds' => $this->config->int('MAGICLINK_TTL_SECONDS', 900), 'poll_after_ms' => $this->tuning->pollAfterMs()],
             'limits' => ['state_batch_max' => $this->tuning->stateBatchMax(), 'body_bytes' => $this->config->int('HTTP_MAX_BODY_BYTES', 16384)],
             'states' => $states,
@@ -310,17 +325,167 @@ final class App
             return $this->apiProblem($request, 'request.csrf_failed', 'Reload the confirmation page and try again.', 419);
         }
         try {
+            // Rotate the anonymous session before consuming the one-time token.
+            // A storage/regeneration failure therefore leaves the link retryable.
+            Session::rotateForAuthentication();
             $result = $this->service->exchange((string) ($input['id'] ?? ''), (string) ($input['token'] ?? ''), $request->ip());
             Session::authenticate($result['email']);
+            $redirect = $this->successUrl();
+            $handoff = null;
+            $handoffRequest = Session::handoffRequest();
+            if ($this->handoffs->enabled() && $handoffRequest !== null) {
+                try {
+                    $authorization = $this->handoffs->authorize($handoffRequest, Session::binding(), $result['email']);
+                    $redirect = $authorization['redirect'];
+                    $handoff = [
+                        'status' => 'authorized',
+                        'expires_at' => $authorization['expires_at'],
+                        'retry_url' => null,
+                    ];
+                } catch (InvalidHandoff) {
+                    Session::clearHandoffRequest();
+                    $handoff = ['status' => 'unavailable', 'expires_at' => null, 'retry_url' => null];
+                } catch (Throwable) {
+                    // Authentication already succeeded and the link is consumed.
+                    // Never turn that success into a false exchange failure. The
+                    // encrypted code is recoverable through this deterministic retry.
+                    $retryUrl = $this->handoffStartUrl($handoffRequest);
+                    $redirect = $retryUrl;
+                    $handoff = ['status' => 'retryable', 'expires_at' => null, 'retry_url' => $retryUrl];
+                }
+            }
             return $this->apiSuccess($request, 'magic_link.verified', [
                 'state' => $result['state'],
                 'message' => $this->states->message($result['state']),
-                'redirect' => $this->successUrl(),
+                'redirect' => $redirect,
+                'handoff' => $handoff,
             ]);
         } catch (RateLimited $error) {
             return $this->apiProblem($request, 'exchange.rate_limited', $this->states->message(MagicLinkState::RateLimited->value), 429, $error->retryAfter);
         } catch (InvalidLink) {
             return $this->apiProblem($request, 'exchange.invalid', $this->states->message(MagicLinkState::Failed->value), 410);
+        }
+    }
+
+    private function apiHandoffTransaction(Request $request): Response
+    {
+        if (!$this->handoffs->enabled()) {
+            return $this->apiProblem($request, 'handoff.unavailable', 'Server handoff is not configured.', 404);
+        }
+        if (!$this->handoffs->clientAuthenticated($request->header('Authorization'))) {
+            return $this->apiProblem($request, 'handoff.unauthorized', 'The server handoff credential is invalid.', 401);
+        }
+        $input = $request->input();
+        try {
+            $transaction = $this->handoffs->initiate(
+                (string) ($input['redirect_uri'] ?? ''),
+                (string) ($input['state'] ?? ''),
+                (string) ($input['code_challenge'] ?? ''),
+                (string) ($input['code_challenge_method'] ?? ''),
+            );
+            return $this->apiSuccess($request, 'handoff.transaction_created', [
+                'authorize_url' => $transaction['authorize_url'],
+                'expires_at' => $transaction['expires_at'],
+            ], 201);
+        } catch (RateLimited $error) {
+            return $this->apiProblem($request, 'handoff.rate_limited', 'Too many authorization transactions. Try again later.', 429, $error->retryAfter);
+        } catch (\InvalidArgumentException $error) {
+            return $this->apiProblem($request, 'handoff.invalid_request', $error->getMessage(), 422);
+        }
+    }
+
+    private function apiHandoffStart(Request $request): Response
+    {
+        if (!$this->handoffs->enabled()) {
+            return $this->apiProblem($request, 'handoff.unavailable', 'Server handoff is not configured.', 404);
+        }
+        $handoffRequest = $request->query('request');
+        try {
+            $this->handoffs->bind($handoffRequest, Session::binding());
+            Session::bindHandoffRequest($handoffRequest);
+        } catch (InvalidHandoff | \InvalidArgumentException) {
+            return $this->apiProblem($request, 'handoff.invalid', 'The authorization request is invalid or expired.', 410);
+        }
+
+        $email = Session::email();
+        if ($email === null) {
+            return Response::redirect($this->config->path('/'));
+        }
+        try {
+            $authorization = $this->handoffs->authorize($handoffRequest, Session::binding(), $email);
+            return Response::redirect($authorization['redirect']);
+        } catch (InvalidHandoff) {
+            Session::clearHandoffRequest();
+            return $this->apiProblem($request, 'handoff.invalid', 'The authorization request is invalid or expired.', 410);
+        } catch (Throwable) {
+            return $this->apiProblem(
+                $request,
+                'handoff.retryable',
+                'Authentication is active, but the authorization handoff must be retried.',
+                503,
+                1,
+                ['retry_url' => $this->handoffStartUrl($handoffRequest)],
+            );
+        }
+    }
+
+    private function apiHandoffAuthorize(Request $request): Response
+    {
+        if (!$this->handoffs->enabled()) {
+            return $this->apiProblem($request, 'handoff.unavailable', 'Server handoff is not configured.', 404);
+        }
+        $input = $request->input();
+        try {
+            $this->guardPost($request, $request->header('X-CSRF-Token') ?: (string) ($input['_csrf'] ?? ''));
+        } catch (\RuntimeException) {
+            return $this->apiProblem($request, 'request.csrf_failed', 'Reload the client configuration and try again.', 419);
+        }
+        $email = Session::email();
+        $handoffRequest = Session::handoffRequest();
+        if ($email === null || $handoffRequest === null) {
+            return $this->apiProblem($request, 'handoff.unavailable', 'No authenticated authorization transaction is pending.', 409);
+        }
+        try {
+            $authorization = $this->handoffs->authorize($handoffRequest, Session::binding(), $email);
+            return $this->apiSuccess($request, 'handoff.authorized', [
+                'redirect' => $authorization['redirect'],
+                'expires_at' => $authorization['expires_at'],
+            ]);
+        } catch (InvalidHandoff) {
+            Session::clearHandoffRequest();
+            return $this->apiProblem($request, 'handoff.invalid', 'The authorization request is invalid or expired.', 410);
+        } catch (Throwable) {
+            return $this->apiProblem(
+                $request,
+                'handoff.retryable',
+                'Authentication is active, but the authorization handoff must be retried.',
+                503,
+                1,
+                ['retry_url' => $this->handoffStartUrl($handoffRequest)],
+            );
+        }
+    }
+
+    private function apiHandoffExchange(Request $request): Response
+    {
+        if (!$this->handoffs->enabled()) {
+            return $this->apiProblem($request, 'handoff.unavailable', 'Server handoff is not configured.', 404);
+        }
+        if (!$this->handoffs->clientAuthenticated($request->header('Authorization'))) {
+            return $this->apiProblem($request, 'handoff.unauthorized', 'The server handoff credential is invalid.', 401);
+        }
+        $input = $request->input();
+        try {
+            $identity = $this->handoffs->exchange(
+                (string) ($input['code'] ?? ''),
+                (string) ($input['redirect_uri'] ?? ''),
+                (string) ($input['code_verifier'] ?? ''),
+            );
+            return $this->apiSuccess($request, 'handoff.exchanged', [
+                'email' => $identity['email'],
+            ]);
+        } catch (InvalidHandoff) {
+            return $this->apiProblem($request, 'handoff.invalid', 'The handoff code is invalid or expired.', 410);
         }
     }
 
@@ -547,6 +712,12 @@ final class App
     private function successUrl(): string
     {
         return $this->config->string('AUTH_SUCCESS_URL') ?: $this->config->path('/');
+    }
+
+    private function handoffStartUrl(string $request): string
+    {
+        return $this->config->url('/api/v1/handoffs/authorize')
+            . '?' . http_build_query(['request' => $request], '', '&', PHP_QUERY_RFC3986);
     }
 
     private function isApi(Request $request): bool

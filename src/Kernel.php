@@ -16,6 +16,7 @@ final class Kernel
         public readonly Database $database,
         public readonly Crypto $crypto,
         public readonly MagicLinkService $magicLinks,
+        public readonly HandoffService $handoffs,
         public readonly OutboxWorker $outbox,
         public readonly MaintenanceService $maintenance,
         public readonly Tuning $tuning,
@@ -33,6 +34,7 @@ final class Kernel
             default => new NativeMailer($config),
         };
         $magicLinks = new MagicLinkService($database->pdo(), $config, $crypto);
+        $handoffs = new HandoffService($database->pdo(), $config, $crypto);
         $outbox = new OutboxWorker(
             $database->pdo(),
             $config,
@@ -43,6 +45,7 @@ final class Kernel
         // Resolve every automatic value during boot so invalid operator config fails fast.
         $tuning->stateBatchMax();
         $tuning->workerBatch();
+        $tuning->pendingMailMax();
         $tuning->maintenanceBatch();
 
         return new self(
@@ -50,6 +53,7 @@ final class Kernel
             $database,
             $crypto,
             $magicLinks,
+            $handoffs,
             $outbox,
             new MaintenanceService($database->pdo(), $config),
             $tuning,
@@ -61,6 +65,7 @@ final class Kernel
         return new App(
             $this->config,
             $this->magicLinks,
+            $this->handoffs,
             new StateCatalog($this->config->root(), $this->config->locale()),
             $this->outbox,
             $this->maintenance,

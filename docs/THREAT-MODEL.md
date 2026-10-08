@@ -6,7 +6,8 @@
 - the authenticated PHP session;
 - the normalized email identity;
 - the application key and mail credentials;
-- the allowlist and metadata-only audit history.
+- the allowlist and metadata-only audit history;
+- handoff state, PKCE binding, one-time code and relying-party client secret.
 
 ## Defended paths
 
@@ -21,13 +22,19 @@
 | Cross-site request | session CSRF plus Origin/Referer check |
 | Email/account enumeration | uniform waiting state and decoy row |
 | SMTP timing reveals allowlist | request transaction queues allowed and decoy rows without network mail |
-| Request flooding | fixed-window IP and email HMAC counters |
-| Token guessing / audit growth | IP and selector exchange budgets before rejection audit |
+| Request flooding | fixed-window global, IP and email HMAC counters plus a bounded queue |
+| Full-queue identity oracle | every identity receives the same capacity rejection |
+| Token guessing / counter growth | global, IP and selector exchange budgets before lookup/audit |
 | Cross-device session theft | state polling never returns identity or authenticates; only token exchange does |
-| Stored-data growth | bounded cleanup batches and configurable retention |
+| Stored-data growth | deterministic due-checks, admission-derived batches, bounded catch-up and retention |
+| Session-file growth | stateless health route plus application-owned PHP GC lifetime/cadence |
+| Oversized pre-parsed forms | ingress/PHP caps match the app default; multipart is not accepted |
 | Proxy-header spoofing | forwarding chain is ignored unless direct peer is explicitly trusted |
 | Session fixation | ID rotation after authentication |
 | Host header poisoning | links use configured `APP_URL`, never request Host |
+| Database peer substitution | remote production requires mysqlnd, CA and host verification |
+| Legacy SMTP downgrade | certificate/host verification and TLS 1.2+ protocol floor |
+| Handoff login/CSRF mix-up | exact redirect, RP-session state, browser binding, S256 PKCE and one-time code |
 
 ## Explicit non-goals
 
