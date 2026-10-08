@@ -1,6 +1,6 @@
 name: Publish CI proof badge
 
-on: # zizmor: ignore[dangerous-triggers] guarded to same-repository main pushes below
+on: # zizmor: ignore[dangerous-triggers] only same-repository manual runs pass the guard below
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   publish:
-    if: ${{ github.repository == 'angusu-de/MagicLink-CI' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ github.repository == 'angusu-de/MagicLink-CI' && github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -29,14 +29,12 @@ jobs:
           PROOF_REPOSITORY: ${{ github.repository }}
           PROOF_RUN_ID: ${{ github.event.workflow_run.id }}
           PROOF_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
-          PROOF_RUN_EVENT: ${{ github.event.workflow_run.event }}
           PROOF_RUN_URL: ${{ github.event.workflow_run.html_url }}
-          PROOF_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          PROOF_HARNESS_SHA: ${{ github.event.workflow_run.head_sha }}
         run: python3 scripts/render-ci-proof.py /tmp/ci-proof.svg /tmp/ci-proof.json
       - name: Publish isolated proof branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PROOF_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -51,9 +49,8 @@ jobs:
           cp "$proof_dir/ci-proof.svg" proof/ci-proof.svg
           cp "$proof_dir/ci-proof.json" proof/ci-proof.json
           git add proof
-          git commit -m "Update CI proof for ${PROOF_HEAD_SHA:0:7} [skip ci]"
+          git commit -m "Update public CI proof [skip ci]"
           auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
           git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
           git push --force origin HEAD:ci-proof
           git config --local --unset-all http.https://github.com/.extraheader
-

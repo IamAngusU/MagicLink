@@ -115,7 +115,9 @@ Der Badge stammt aus `IamAngusU/Badges`, der Stack-Marquee aus
 `IamAngusU/Icon-Marquee`. Die aktuelle Link-Marke ist ein Platzhalter und kann
 später an einer kanonischen SVG-Quelle ersetzt werden.
 
-CI läuft wegen der getrennten GitHub-Abrechnung im privaten Spiegel
-`angusu-de/MagicLink-CI`; Aufbau, Sync und Proof-Modell stehen in [CI.md](docs/CI.md).
+CI läuft wegen der getrennten GitHub-Abrechnung im öffentlichen, quellcodefreien
+Harness [`angusu-de/MagicLink-CI`](https://github.com/angusu-de/MagicLink-CI).
+Er liest nur den angeforderten privaten Commit über einen read-only Deploy Key;
+Aufbau und Proof-Modell stehen in [CI.md](docs/CI.md).
 
 Dieses private Repository enthält derzeit keine öffentliche Softwarelizenz.

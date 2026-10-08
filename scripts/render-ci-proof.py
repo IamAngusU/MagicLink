@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inject completed GitHub job evidence into the Badges proof template."""
+"""Inject completed public-harness job evidence into the Badges proof template."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ import urllib.request
 from pathlib import Path
 
 BADGE_DESIGN_SOURCE = "IamAngusU/Badges"
-BADGE_DESIGN_SOURCE_COMMIT = "c58c29001e3089ba98c37cc04a3eac06a0c532db"
+BADGE_DESIGN_SOURCE_COMMIT = "0017cbb65463bb2e19f6e774b418dd0126dc0e93"
+SOURCE_JOB = re.compile(r"^Source ([0-9a-f]{40}) · package$")
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "docs" / "assets" / "ci-proof-template.svg"
 
 
@@ -56,6 +57,13 @@ def load_jobs(repository: str, run_id: str) -> list[dict]:
     return jobs
 
 
+def source_sha(jobs: list[dict]) -> str:
+    matches = [match.group(1) for job in jobs if (match := SOURCE_JOB.fullmatch(str(job.get("name") or "")))]
+    if len(matches) != 1:
+        raise SystemExit("CI run does not identify exactly one private source commit")
+    return matches[0]
+
+
 def proof_status(conclusion: str) -> str:
     value = conclusion.lower().strip()
     if value == "success":
@@ -85,15 +93,15 @@ def render_segments(statuses: list[str]) -> str:
     return "\n    ".join(lines)
 
 
-def render_svg(jobs: list[dict], sha: str, run_number: str, event: str) -> str:
+def render_svg(jobs: list[dict], private_sha: str, run_number: str) -> str:
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     if 'data-badge-system="IamAngusU/Badges"' not in template or 'id="proof-metric"' not in template or 'id="proof-segments"' not in template:
         raise SystemExit("CI proof template is missing badge-system anchors")
     passed = sum(1 for job in jobs if job.get("conclusion") == "success")
     metric = f"{passed}/{len(jobs)}" if jobs else "0/0"
     title = (
-        f"MagicLink private CI mirror: {metric} jobs passed for {sha[:7]}, "
-        f"run #{run_number} ({event}); separate GitHub account, same maintainer, not a third-party audit."
+        f"MagicLink public CI harness: {metric} jobs passed for private source {private_sha[:7]}, "
+        f"run #{run_number}; read-only deploy key, same maintainer, not a third-party audit."
     )
     escaped = html.escape(title, quote=True)
     svg = re.sub(r'aria-label="[^"]*"', f'aria-label="{escaped}"', template, count=1)
@@ -109,21 +117,22 @@ def main() -> None:
     repository = required("PROOF_REPOSITORY")
     run_id = required("PROOF_RUN_ID")
     run_number = required("PROOF_RUN_NUMBER")
-    event = required("PROOF_RUN_EVENT")
     run_url = required("PROOF_RUN_URL")
-    head_sha = required("PROOF_HEAD_SHA")
+    harness_sha = required("PROOF_HARNESS_SHA")
     jobs = load_jobs(repository, run_id)
-    Path(sys.argv[1]).write_text(render_svg(jobs, head_sha, run_number, event), encoding="utf-8")
+    private_sha = source_sha(jobs)
+    Path(sys.argv[1]).write_text(render_svg(jobs, private_sha, run_number), encoding="utf-8")
     evidence = {
-        "claim": "private separate-account CI mirror; same maintainer; not a third-party audit",
+        "claim": "public source-free CI harness; read-only deploy key; same maintainer; not a third-party audit",
         "badge_design_source": BADGE_DESIGN_SOURCE,
         "badge_design_source_commit": BADGE_DESIGN_SOURCE_COMMIT,
         "repository": repository,
         "run_id": int(run_id),
         "run_number": int(run_number),
-        "event": event,
         "run_url": run_url,
-        "head_sha": head_sha,
+        "private_source_repository": "IamAngusU/MagicLink",
+        "private_source_sha": private_sha,
+        "harness_sha": harness_sha,
         "jobs_total": len(jobs),
         "jobs_success": sum(1 for job in jobs if job.get("conclusion") == "success"),
         "jobs": [{"name": job.get("name"), "status": job.get("status"), "conclusion": job.get("conclusion")} for job in jobs],
@@ -133,4 +142,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

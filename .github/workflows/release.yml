@@ -2,6 +2,11 @@ name: Build release proof
 
 on:
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character commit from the private IamAngusU/MagicLink repository
+        required: true
+        type: string
 
 permissions: {}
 
@@ -14,14 +19,25 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          repository: IamAngusU/MagicLink
+          ref: ${{ inputs.source_sha }}
+          ssh-key: ${{ secrets.MAGICLINK_DEPLOY_KEY }}
           persist-credentials: false
+      - name: Verify immutable source revision
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: "8.2"
           extensions: pdo_sqlite, openssl, sodium
           coverage: none
       - run: php bin/check.php
-      - name: Build shared-hosting ZIP
+      - name: Build without publishing private source
         shell: bash
         run: |
           set -euo pipefail
@@ -35,9 +51,11 @@ jobs:
           mkdir -p dist/package/storage
           cp storage/.gitkeep storage/.htaccess dist/package/storage/
           (cd dist/package && zip -qr ../magiclink-shared-hosting.zip .)
+          sha256sum dist/magiclink-shared-hosting.zip > dist/SHA256SUMS
+          cat dist/SHA256SUMS
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: magiclink-release-proof
-          path: dist/magiclink-shared-hosting.zip
+          name: magiclink-release-checksum
+          path: dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
