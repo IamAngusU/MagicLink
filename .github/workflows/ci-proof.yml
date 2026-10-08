@@ -1,0 +1,59 @@
+name: Publish CI proof badge
+
+on: # zizmor: ignore[dangerous-triggers] guarded to same-repository main pushes below
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: magiclink-ci-proof
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: ${{ github.repository == 'angusu-de/MagicLink-CI' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write # zizmor: ignore[excessive-permissions] only the ci-proof branch is replaced
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Render proof from completed jobs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROOF_REPOSITORY: ${{ github.repository }}
+          PROOF_RUN_ID: ${{ github.event.workflow_run.id }}
+          PROOF_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          PROOF_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          PROOF_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          PROOF_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: python3 scripts/render-ci-proof.py /tmp/ci-proof.svg /tmp/ci-proof.json
+      - name: Publish isolated proof branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROOF_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_dir="$(mktemp -d)"
+          cp /tmp/ci-proof.svg "$proof_dir/ci-proof.svg"
+          cp /tmp/ci-proof.json "$proof_dir/ci-proof.json"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan ci-proof
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p proof
+          cp "$proof_dir/ci-proof.svg" proof/ci-proof.svg
+          cp "$proof_dir/ci-proof.json" proof/ci-proof.json
+          git add proof
+          git commit -m "Update CI proof for ${PROOF_HEAD_SHA:0:7} [skip ci]"
+          auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
+          git push --force origin HEAD:ci-proof
+          git config --local --unset-all http.https://github.com/.extraheader
+

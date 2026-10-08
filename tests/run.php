@@ -102,13 +102,24 @@ mkdir($temporary . '/storage', 0700, true);
 mkdir($temporary . '/sessions', 0700, true);
 session_save_path($temporary . '/sessions');
 
-$config = Config::fromArray($temporary, [
+$databaseDriver = strtolower(trim((string) (getenv('MAGICLINK_TEST_DB_DRIVER') ?: 'sqlite')));
+$databaseSettings = $databaseDriver === 'mysql' ? [
+    'DB_DRIVER' => 'mysql',
+    'DB_HOST' => (string) (getenv('MAGICLINK_TEST_DB_HOST') ?: '127.0.0.1'),
+    'DB_PORT' => (string) (getenv('MAGICLINK_TEST_DB_PORT') ?: '3306'),
+    'DB_DATABASE' => (string) (getenv('MAGICLINK_TEST_DB_DATABASE') ?: 'magic_link_test'),
+    'DB_USERNAME' => (string) (getenv('MAGICLINK_TEST_DB_USERNAME') ?: 'magic_link'),
+    'DB_PASSWORD' => (string) (getenv('MAGICLINK_TEST_DB_PASSWORD') ?: ''),
+] : [
+    'DB_DRIVER' => 'sqlite',
+    'DB_PATH' => 'storage/test.sqlite',
+];
+
+$config = Config::fromArray($temporary, $databaseSettings + [
     'APP_ENV' => 'test',
     'APP_URL' => 'http://127.0.0.1:8080',
     'APP_NAME' => 'Test Link',
     'APP_LOCALE' => 'en',
-    'DB_DRIVER' => 'sqlite',
-    'DB_PATH' => 'storage/test.sqlite',
     'MAIL_TRANSPORT' => 'log',
     'MAIL_FROM_ADDRESS' => 'test@example.com',
     'MAGICLINK_ALLOWED_EMAILS' => 'owner@example.com',
@@ -211,9 +222,11 @@ $batchResponse = dispatch($app, 'POST', '/api/v1/states', [
 ], ['Origin' => 'http://127.0.0.1:8080']);
 $batchPayload = responseJson($batchResponse);
 expect($batchResponse->status() === 200 && count($batchPayload['data']['items']) === 2, 'Batch endpoint must return every owned state.');
-expect($tuning->stateBatchMax() === 32 && $tuning->workerBatch() === 25, 'SQLite auto-tuning must use conservative defaults.');
+$expectedStateBatch = $databaseDriver === 'mysql' ? 100 : 32;
+$expectedWorkerBatch = $databaseDriver === 'mysql' ? 100 : 25;
+expect($tuning->stateBatchMax() === $expectedStateBatch && $tuning->workerBatch() === $expectedWorkerBatch, 'Database auto-tuning must use the documented defaults.');
 $oversizedBatch = dispatch($app, 'POST', '/api/v1/states', [
-    'ids' => array_fill(0, 33, $batchB['selector']),
+    'ids' => array_fill(0, $expectedStateBatch + 1, $batchB['selector']),
     '_csrf' => 'csrf-requester',
 ], ['Origin' => 'http://127.0.0.1:8080']);
 expect($oversizedBatch->status() === 422, 'Batch endpoint must enforce its advertised limit before querying.');

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">MagicLink request, email, exchange and state flow</title>
+  <desc id="desc">The requesting browser receives a public selector and can poll state. The email carries a secret URL fragment. Only the browser that posts that secret receives a session; the original browser only learns that verification occurred.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#081514"/><stop offset="1" stop-color="#102320"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#63e6be"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-30%" width="140%" height="170%"><feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000" flood-opacity=".24"/></filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#66d7bd"/></marker>
+    <marker id="mutedArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0 10 5 0 10Z" fill="#62746f"/></marker>
+    <style>
+      .sans{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}.card{fill:#102a27;stroke:#2d4944;stroke-width:1.5}.small{font-size:13px;letter-spacing:1.8px;font-weight:700;fill:#78a69c}.heading{font-size:23px;font-weight:760;fill:#f4fff9}.body{font-size:15px;fill:#bad0ca}.code{font-size:14px;fill:#d7eee8}.accent{fill:#6ce6c7}.warn{fill:#ffc47a}.line{fill:none;stroke:#66d7bd;stroke-width:2.5;marker-end:url(#arrow)}.mutedline{fill:none;stroke:#62746f;stroke-width:2;stroke-dasharray:6 7;marker-end:url(#mutedArrow)}
+    </style>
+  </defs>
+  <rect width="1200" height="520" rx="30" fill="url(#bg)"/>
+  <path d="M0 396C245 338 398 485 652 423s360-55 548-2v99H0Z" fill="#0d1e1c" opacity=".82"/>
+  <text x="54" y="54" class="sans small">ONE SECRET · ONE SESSION · OBSERVABLE STATE</text>
+  <text x="54" y="91" class="sans heading" font-size="30">The token chooses the browser. The state API never impersonates it.</text>
+
+  <g filter="url(#shadow)">
+    <rect class="card" x="54" y="132" width="242" height="180" rx="20"/>
+    <rect x="74" y="151" width="38" height="28" rx="9" fill="#173d37"/><text x="93" y="171" text-anchor="middle" class="sans accent" font-size="14" font-weight="800">01</text>
+    <text x="74" y="207" class="sans small">BROWSER A</text>
+    <text x="74" y="239" class="sans heading">Request</text>
+    <text x="74" y="268" class="mono code">POST /requests</text>
+    <text x="74" y="293" class="mono code">→ id: ml_…</text>
+
+    <rect class="card" x="340" y="132" width="242" height="180" rx="20"/>
+    <rect x="360" y="151" width="38" height="28" rx="9" fill="#173d37"/><text x="379" y="171" text-anchor="middle" class="sans accent" font-size="14" font-weight="800">02</text>
+    <text x="360" y="207" class="sans small">ENCRYPTED OUTBOX</text>
+    <text x="360" y="239" class="sans heading">Deliver</text>
+    <text x="360" y="268" class="sans body">Retryable mail queue</text>
+    <text x="360" y="293" class="sans body">same public response</text>
+
+    <rect class="card" x="626" y="132" width="242" height="180" rx="20"/>
+    <rect x="646" y="151" width="38" height="28" rx="9" fill="#173d37"/><text x="665" y="171" text-anchor="middle" class="sans accent" font-size="14" font-weight="800">03</text>
+    <text x="646" y="207" class="sans small">EMAIL LINK</text>
+    <text x="646" y="239" class="sans heading">Open</text>
+    <text x="646" y="268" class="mono code">?id=ml_…</text>
+    <text x="646" y="293" class="mono warn" font-size="14">#token=secret</text>
+
+    <rect x="912" y="132" width="234" height="180" rx="20" fill="#13352f" stroke="url(#accent)" stroke-width="2"/>
+    <rect x="932" y="151" width="38" height="28" rx="9" fill="#1c4c43"/><text x="951" y="171" text-anchor="middle" class="sans accent" font-size="14" font-weight="800">04</text>
+    <text x="932" y="207" class="sans small">BROWSER B</text>
+    <text x="932" y="239" class="sans heading">Exchange</text>
+    <text x="932" y="268" class="mono code">POST /exchange</text>
+    <text x="932" y="293" class="sans accent" font-size="15" font-weight="750">✓ session issued here</text>
+  </g>
+
+  <path class="line" d="M296 222H330"/><path class="line" d="M582 222H616"/><path class="line" d="M868 222H902"/>
+
+  <rect x="54" y="365" width="1092" height="104" rx="18" fill="#0b1b19" stroke="#304a46"/>
+  <text x="76" y="397" class="sans small">HEADLESS STATE LAYER</text>
+  <text x="76" y="429" class="mono code">GET /state?id=ml_…</text>
+  <text x="300" y="429" class="mono accent" font-size="14">verified: true</text>
+  <text x="478" y="429" class="mono warn" font-size="14">authenticated: false</text>
+  <text x="690" y="429" class="sans body">Your UI can react; Browser A never receives identity or session.</text>
+  <path class="mutedline" d="M175 312V354"/>
+  <path d="M746 312v29c0 10-8 18-18 18H211" fill="none" stroke="#62746f" stroke-width="2" stroke-dasharray="6 7" marker-end="url(#mutedArrow)"/>
+  <text x="620" y="343" class="sans" font-size="12" fill="#78928c">verification only</text>
+</svg>
+

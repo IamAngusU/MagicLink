@@ -9,10 +9,7 @@ and a working mail transport.
 sudo install -d -o "$USER" -g www-data /var/www/magiclink
 git clone https://github.com/IamAngusU/MagicLink.git /var/www/magiclink
 cd /var/www/magiclink
-php bin/install.php \
-  --url=https://login.example.com \
-  --allow=owner@example.com \
-  --from=no-reply@example.com
+php bin/install.php
 php bin/doctor.php
 php bin/check.php
 sudo chgrp -R www-data storage
@@ -22,6 +19,17 @@ sudo chmod 2770 storage
 Configure the selected virtual host from `deploy/`, request a TLS certificate,
 then reload Nginx or Apache. Keep the repository and `storage/` out of unrelated
 site roots.
+
+The installer prompts in an interactive terminal. For reproducible automation,
+the equivalent non-interactive form remains available:
+
+```bash
+php bin/install.php \
+  --url=https://login.example.com \
+  --allow=owner@example.com \
+  --from=no-reply@example.com
+```
+
 
 Für dauerhaft unabhängigen Versand setze `MAIL_AUTO_DISPATCH=false` und betreibe
 `php bin/worker.php --loop` unter systemd oder Supervisor. Details und

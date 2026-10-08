@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="470" viewBox="0 0 1120 470" role="img" aria-labelledby="title desc">
+  <title id="title">MagicLink guided terminal setup</title>
+  <desc id="desc">A terminal runs php bin/install.php, asks for the public URL and email settings, creates the database, schema, and application key, then passes the doctor checks.</desc>
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#07110f"/><stop offset="1" stop-color="#10211e"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-25%" width="130%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000" flood-opacity=".28"/></filter>
+    <style>.sans{font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}.prompt{fill:#75e2c3}.text{fill:#d7e7e2}.muted{fill:#718a83}.ok{fill:#7ee2a8}.value{fill:#ffd28e}</style>
+  </defs>
+  <rect width="1120" height="470" rx="30" fill="#e8eee9"/>
+  <g filter="url(#shadow)">
+    <rect x="54" y="46" width="1012" height="378" rx="21" fill="url(#shell)"/>
+    <path d="M54 67c0-12 9-21 21-21h970c12 0 21 9 21 21v37H54Z" fill="#132a26"/>
+    <circle cx="82" cy="75" r="6" fill="#ff837a"/><circle cx="104" cy="75" r="6" fill="#ffd06a"/><circle cx="126" cy="75" r="6" fill="#6edb9a"/>
+    <text x="560" y="80" text-anchor="middle" class="sans muted" font-size="13" font-weight="650">magiclink — guided setup</text>
+  </g>
+  <g class="mono" font-size="16">
+    <text x="83" y="139" class="prompt">$ <tspan class="text">php bin/install.php</tspan></text>
+    <text x="83" y="178" class="text">MagicLink setup <tspan class="muted">· secrets stay on this machine</tspan></text>
+    <text x="83" y="220" class="muted">Public HTTPS URL: <tspan class="value">https://login.example.com</tspan></text>
+    <text x="83" y="253" class="muted">Allowed login email(s): <tspan class="value">you@example.com</tspan></text>
+    <text x="83" y="286" class="muted">Sender email: <tspan class="value">no-reply@example.com</tspan></text>
+    <text x="83" y="319" class="ok">✓ Database, schema and app key are ready.</text>
+    <text x="83" y="360" class="prompt">$ <tspan class="text">php bin/doctor.php</tspan></text>
+    <text x="83" y="394" class="ok">[ok] PHP 8.2+  ·  PDO  ·  encryption  ·  storage  ·  HTTPS</text>
+  </g>
+  <rect x="765" y="127" width="266" height="211" rx="16" fill="#0d1917" stroke="#2d4c46"/>
+  <text x="789" y="158" class="sans muted" font-size="12" font-weight="750" letter-spacing="1.5">SAFE DEFAULTS</text>
+  <g class="sans" font-size="15">
+    <text x="789" y="196" class="text">SQLite <tspan class="muted">zero setup</tspan></text>
+    <text x="789" y="229" class="text">Mail <tspan class="muted">queued + retryable</tspan></text>
+    <text x="789" y="262" class="text">Config <tspan class="muted">fully yours</tspan></text>
+    <text x="789" y="295" class="text">API <tspan class="muted">UI-agnostic</tspan></text>
+  </g>
+  <text x="789" y="322" class="mono prompt" font-size="13">READY → OPEN URL</text>
+</svg>

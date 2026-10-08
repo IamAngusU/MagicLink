@@ -2,23 +2,130 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   php:
+    if: github.repository == 'angusu-de/MagicLink-CI'
+    name: PHP ${{ matrix.php }} · SQLite
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
         php: ["8.2", "8.3", "8.4"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: ${{ matrix.php }}
           extensions: pdo_sqlite, openssl, sodium
           coverage: none
       - run: php bin/check.php
+
+  mysql:
+    if: github.repository == 'angusu-de/MagicLink-CI'
+    name: PHP 8.4 · MySQL 8.4
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: magic_link_test
+          MYSQL_USER: magic_link
+          MYSQL_PASSWORD: test-only-password
+          MYSQL_ROOT_PASSWORD: test-only-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.4"
+          extensions: pdo_mysql, openssl, sodium
+          coverage: none
+      - run: php bin/check.php
+        env:
+          MAGICLINK_TEST_DB_DRIVER: mysql
+          MAGICLINK_TEST_DB_HOST: 127.0.0.1
+          MAGICLINK_TEST_DB_PORT: "3306"
+          MAGICLINK_TEST_DB_DATABASE: magic_link_test
+          MAGICLINK_TEST_DB_USERNAME: magic_link
+          MAGICLINK_TEST_DB_PASSWORD: test-only-password
+
+  package:
+    if: github.repository == 'angusu-de/MagicLink-CI'
+    name: Shared-hosting package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: "8.2"
+          extensions: pdo_sqlite, openssl, sodium
+          coverage: none
+      - run: php bin/check.php
+      - name: Build and inspect ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/package
+          rsync -a ./ dist/package/ \
+            --exclude .git \
+            --exclude .github \
+            --exclude dist \
+            --exclude .env \
+            --exclude 'storage/*'
+          mkdir -p dist/package/storage
+          cp storage/.gitkeep storage/.htaccess dist/package/storage/
+          (cd dist/package && zip -qr ../magiclink-shared-hosting.zip .)
+          unzip -l dist/magiclink-shared-hosting.zip | tee dist/contents.txt
+          ! grep -E '(^|/)(\.git|\.env)(/|$)' dist/contents.txt
+          test -f dist/package/public/index.php
+          test -f dist/package/.env.example
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: magiclink-shared-hosting
+          path: dist/magiclink-shared-hosting.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  workflow-security:
+    if: github.repository == 'angusu-de/MagicLink-CI'
+    name: Workflow security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Audit GitHub Actions
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        with:
+          advanced-security: false
+          online-audits: false
+          persona: auditor
+          min-severity: medium
+          min-confidence: medium
+          version: v1.30.1

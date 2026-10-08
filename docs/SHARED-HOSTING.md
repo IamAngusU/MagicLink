@@ -4,8 +4,10 @@
 
 1. Download `magiclink-shared-hosting.zip` from the latest private GitHub release.
 2. Extract it into a dedicated domain or subdomain directory.
-3. Copy `.env.example` to `.env`.
-4. Set `APP_URL`, `MAIL_FROM_ADDRESS` and at least one allowed email or domain.
+3. With SSH or a hosting terminal, run `php bin/install.php` and answer the
+   guided prompts. Without a shell, copy `.env.example` to `.env`.
+4. In a manually copied file, set `APP_URL`, `MAIL_FROM_ADDRESS` and at least
+   one allowed email or domain.
 5. Open the configured URL and then check `php bin/doctor.php` if the host offers
    a terminal.
 

@@ -38,11 +38,13 @@ MagicLink kapselt diesen Unterbau hinter einer kleinen, versionierten API:
 
 Kein Framework und kein Composer-Zwang: PHP 8.2+, PDO und Sodium oder OpenSSL.
 
+<p align="center"><img src="docs/assets/magiclink-flow.svg" alt="MagicLink trennt Request-State und Token-Exchange: Nur der Browser mit dem Secret erhält eine Session." width="960"></p>
+
 ## In drei Minuten
 
-1. [Das aktuelle ZIP laden](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip).
-2. Hochladen und `.env.example` nach `.env` kopieren.
-3. Drei Werte setzen:
+1. [Das aktuelle ZIP laden](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip) und hochladen.
+2. Mit Shell einfach `php bin/install.php` starten und drei Fragen beantworten.
+3. Ohne Shell `.env.example` nach `.env` kopieren und drei Werte setzen:
 
 ```dotenv
 APP_URL=https://login.example.com
@@ -51,6 +53,8 @@ MAGICLINK_ALLOWED_EMAILS=you@example.com
 ```
 
 4. Domain öffnen. SQLite, Schema und App-Key entstehen automatisch.
+
+<p align="center"><img src="docs/assets/terminal-setup.svg" alt="Geführte MagicLink-Installation und Doctor-Check im Terminal" width="900"></p>
 
 Wenn möglich, zeigt der Document Root auf `public/`. Der Root-Fallback für
 klassisches Apache-Hosting ist bereits enthalten. Details: [Shared Hosting](docs/SHARED-HOSTING.md)
@@ -110,5 +114,8 @@ Lies außerdem [`SECURITY.md`](SECURITY.md) und das [Threat Model](docs/THREAT-M
 Der Badge stammt aus `IamAngusU/Badges`, der Stack-Marquee aus
 `IamAngusU/Icon-Marquee`. Die aktuelle Link-Marke ist ein Platzhalter und kann
 später an einer kanonischen SVG-Quelle ersetzt werden.
+
+CI läuft wegen der getrennten GitHub-Abrechnung im privaten Spiegel
+`angusu-de/MagicLink-CI`; Aufbau, Sync und Proof-Modell stehen in [CI.md](docs/CI.md).
 
 Dieses private Repository enthält derzeit keine öffentliche Softwarelizenz.
