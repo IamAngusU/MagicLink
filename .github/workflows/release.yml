@@ -52,6 +52,18 @@ jobs:
           mkdir -p dist/package/storage
           cp storage/.gitkeep storage/.htaccess dist/package/storage/
           (cd dist/package && zip -qr ../magiclink-shared-hosting.zip .)
+          zipinfo -1 dist/magiclink-shared-hosting.zip > dist/contents.txt
+          ! grep -E '(^|/)\.git($|/)|(^|/)\.env$' dist/contents.txt
+          test -f dist/package/public/index.php
+          test -f dist/package/public/.user.ini
+          test -f dist/package/public/.htaccess
+          test -f dist/package/.htaccess
+          test -f dist/package/.env.example
+          test -f dist/package/resources/mail-templates/en/html.html
+          test -f dist/package/resources/mail-templates/de/html.html
+          grep -Fx 'post_max_size=16K' dist/package/public/.user.ini
+          grep -Fx 'LimitRequestBody 16384' dist/package/public/.htaccess
+          grep -Fx 'LimitRequestBody 16384' dist/package/.htaccess
           sha256sum dist/magiclink-shared-hosting.zip > dist/SHA256SUMS
           cat dist/SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

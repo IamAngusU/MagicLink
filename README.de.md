@@ -1,85 +1,74 @@
 <p align="center">
-  <img src="docs/assets/magiclink-badge.svg" height="58" alt="MagicLink — selbst gehostete passwortlose Anmeldung">
+  <img src="docs/assets/magiclink-badge.svg" width="400" alt="MagicLink — selbst gehostete passwortlose Anmeldung">
 </p>
+
+<h1 align="center">Passwortlos anmelden, ohne deinen Stack abzugeben.</h1>
+<p align="center">Eine kleine PHP-App hochladen. UI, Mail, Daten und Limits behalten.<br>MagicLink übernimmt die Sicherheitsmechanik darunter.</p>
 
 <p align="center">
   <a href="README.md"><img src="docs/assets/readme-language-en.svg" height="40" alt="Read this README in English"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="58" alt="Öffentlicher MagicLink-CI-Nachweis"></a>
+  <a href="https://github.com/IamAngusU/MagicLink/releases/latest"><img src="docs/assets/readme/repo-release.svg" height="40" alt="Uploadfertiges ZIP herunterladen"></a>
+  <a href="composer.json"><img src="docs/assets/readme/repo-runtime.svg" height="40" alt="PHP 8.2 oder neuer"></a>
+  <a href="docs/SHARED-HOSTING.md"><img src="docs/assets/readme/repo-hosting.svg" height="40" alt="Shared-Hosting- und VPS-Deployment"></a>
+  <a href="docs/API.de.md"><img src="docs/assets/readme/repo-api.svg" height="40" alt="Versionierte Headless API"></a>
 </p>
-
-<h1 align="center">MagicLink</h1>
-
-<p align="center"><strong>Passwortlose Anmeldung, die auf Shared Hosting genauso klein startet wie auf einem VPS – mit eigener UI, eigener Config und ohne sichtbaren Infrastrukturballast.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/IamAngusU/MagicLink/releases/latest"><strong>Fertiges ZIP herunterladen</strong></a>
-  · <a href="docs/API.de.md">Headless API</a>
-  · <a href="docs/CONFIGURATION.de.md">Config</a>
-  · <a href="docs/OPERATIONS.de.md">Betrieb</a>
-  · <a href="SECURITY.md">Security</a>
+  <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="54" alt="Aktueller öffentlicher MagicLink-CI-Nachweis"></a>
 </p>
+<p align="center"><sub>Öffentliche, quellcodefreie CI auf einem getrennten Account, gleicher Maintainer. Das Badge belegt die veröffentlichten Jobs für den genannten Commit; es ist kein unabhängiges Audit.</sub></p>
 
-<p align="center"><a href="https://github.com/IamAngusU/icon-marquee"><img src="docs/assets/stack-marquee.svg" alt="PHP, JavaScript, HTML, CSS, SQLite, MySQL, Apache und Nginx" width="780"></a></p>
+<p align="center"><a href="#schnellstart">Schnellstart</a> · <a href="#warum-magiclink">Warum MagicLink?</a> · <a href="#deine-eigene-ui">Eigene UI</a> · <a href="#deine-mail-dein-design">Eigene Mail</a> · <a href="#vom-shared-hosting-zum-vps">Skalierung</a> · <a href="#sicherheitsgrenze">Security</a> · <a href="docs/API.de.md">Doku</a></p>
 
-## Problem
+MagicLink ist ein kleiner selbst gehosteter Auth-Service für gewöhnliches PHP-
+Shared-Hosting und VPS-Deployments. Er braucht weder Framework noch Composer,
+startet mit SQLite und bietet der eingebauten Oberfläche und deiner UI dieselbe
+versionierte API.
 
-Ein kleiner Login zieht schnell Passwort-Resets, Credential-Stuffing, Sessions,
-CSRF, Mailfehler, Enumeration und Retention nach sich. Viele Magic-Link-Snippets
-legen zudem den Token ins Serverlog oder melden den falschen Browser an.
+## Schnellstart
 
-## Lösung
-
-MagicLink kapselt diesen Unterbau hinter einer kleinen, versionierten API:
-
-- das Geheimnis bleibt im URL-Fragment und wird erst per geschütztem POST verbraucht;
-- ausschließlich das Gerät mit dem Link erhält die Sitzung;
-- State- und Batch-Endpunkte liefern stabile Codes für deine eigene UI, aber
-  weder Identität noch Token;
-- E-Mail läuft über eine verschlüsselte Outbox mit Retry und gleicher Außenwirkung
-  für erlaubte und nicht erlaubte Adressen;
-- die eingebauten deutschen und englischen Mails lassen sich durch lokale,
-  einfache UTF-8-Templates ersetzen und ohne Versand vorschauen;
-- ein optionaler RP-initiierter, State- und PKCE-gebundener Handoff übergibt die
-  bestätigte Identität an ein anderes Backend, ohne Session-Cookies zu teilen;
-- Rate Limits, Request-Größen, Proxy-Vertrauen, Sessions, CORS und Retention sind
-  sichere Defaults – und vollständig über `.env` steuerbar;
-- ein explizites globales Request-Budget und eine begrenzte Pending-Queue bremsen
-  vor Überlast; `auto` dimensioniert Queue- und Batch-Limits für SQLite oder
-  MySQL, explizite Werte gewinnen immer.
-
-Kein Framework und kein Composer-Zwang: PHP 8.2+, PDO und Sodium oder OpenSSL.
-
-<p align="center"><img src="docs/assets/magiclink-flow.svg" alt="MagicLink trennt Request-State und Token-Exchange: Nur der Browser mit dem Secret erhält eine Session." width="960"></p>
-
-## In drei Minuten
-
-1. [Das aktuelle uploadfertige ZIP laden](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip) und hochladen.
-2. Mit Shell einfach `php bin/install.php` starten und drei Fragen beantworten.
-3. Ohne Shell `.env.example` nach `.env` kopieren und drei Werte setzen:
+1. [Das uploadfertige ZIP herunterladen](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip) und hochladen.
+2. Mit Shell `php bin/install.php` ausführen und drei Fragen beantworten.
+3. Ohne Shell `.env.example` nach `.env` kopieren und setzen:
 
 ```dotenv
 APP_URL=https://login.example.com
 MAIL_FROM_ADDRESS=no-reply@example.com
-MAGICLINK_ALLOWED_EMAILS=you@example.com
+MAGICLINK_ALLOWED_EMAILS=du@example.com
 ```
 
-4. Domain öffnen. SQLite, Schema und App-Key entstehen automatisch.
+4. Domain öffnen. MagicLink erzeugt SQLite, Schema und App-Key selbst.
 
-<p align="center"><img src="docs/assets/terminal-setup.svg" alt="Geführte MagicLink-Installation und Doctor-Check im Terminal" width="900"></p>
+<p align="center"><img src="docs/assets/terminal-setup.svg" width="900" alt="Geführte MagicLink-Installation und Doctor-Check im Terminal"></p>
 
-Wenn möglich, zeigt der Document Root auf `public/`. Der Root-Fallback für
-klassisches Apache-Hosting ist bereits enthalten. Details: [Shared Hosting](docs/SHARED-HOSTING.md)
-oder [VPS](docs/VPS.md).
+Wenn möglich, zeigt der Document Root auf `public/`. Für klassisches Apache-
+Hosting ist ein Root-Fallback enthalten. Mehr steht im [Shared-Hosting-Guide](docs/SHARED-HOSTING.md)
+und im [VPS-Guide](docs/VPS.md).
 
-## Eigene UI
+## Warum MagicLink?
+
+Die E-Mail ist der einfache Teil. Das Produkt sind die Fehlerfälle darum herum:
+
+| Das Problem | Was MagicLink übernimmt |
+| --- | --- |
+| Tokens landen in Serverlogs | Das Secret bleibt im URL-Fragment und wird nur durch einen geschützten POST verbraucht. |
+| Ein Link meldet den falschen Browser an | Request-State ist an den startenden Browser gebunden; nur der Browser mit Secret erhält eine Session. |
+| Antworten verraten vorhandene Accounts | Erlaubte und abgelehnte Identitäten durchlaufen denselben öffentlichen Pfad, dasselbe Zeitbudget und State-Modell. |
+| Mailversand bricht mitten im Request ab | Eine verschlüsselte Outbox liefert begrenzte Retries, Leases, stabile Message-IDs und explizite Endzustände. |
+| Ein Burst wird zum Ausfall | Globale, IP-, Identitäts- und Selector-Budgets arbeiten mit Queue-Backpressure und begrenzter automatischer Bereinigung. |
+| Eine eigene UI müsste Interna verstehen | Stabile State- und Batch-Endpunkte liefern ein Response-Format: `{ ok, code, data, error, meta }`. |
+
+<p align="center"><img src="docs/assets/magiclink-flow.svg" width="960" alt="MagicLink trennt Request-State vom Token-Exchange mit Secret"></p>
+
+## Deine eigene UI
 
 ```js
 const api = "https://login.example.com/api/v1";
 const config = await fetch(`${api}/config`, { credentials: "include" })
-  .then(r => r.json());
+  .then(response => response.json());
 
 const request = await fetch(config.data.endpoints.request, {
   method: "POST",
@@ -88,45 +77,37 @@ const request = await fetch(config.data.endpoints.request, {
     "Content-Type": "application/json",
     "X-CSRF-Token": config.data.csrf_token
   },
-  body: JSON.stringify({ email: "you@example.com" })
-}).then(r => r.json());
+  body: JSON.stringify({ email: "du@example.com" })
+}).then(response => response.json());
 ```
 
-Danach `GET /api/v1/state?id=…` mit dem in `meta.poll_after_ms` gelieferten
-Intervall pollen – oder mehrere eigene Requests über `POST /api/v1/states`
-bündeln. Antworten verwenden immer dieselbe Form:
-`{ ok, code, data, error, meta }`.
+Danach `GET /api/v1/state?id=…` mit `meta.poll_after_ms` pollen oder eigene
+Requests über `POST /api/v1/states` bündeln. Ein getrenntes Backend kann den
+optionalen Confidential-Client-Handoff verwenden: exakte Redirect-URI,
+kurzlebiger Code, `state`, PKCE und einmaliger Exchange, ohne Session-Cookies
+zwischen Anwendungen zu teilen.
 
-Alle Endpunkte, States, CORS-Regeln und ein kompletter Browser-Flow stehen in der
-[Headless-API-Doku](docs/API.de.md).
-
-Für ein getrenntes Backend aktivierst du den optionalen Server-Handoff. Dieses
-Backend startet die Transaktion, bindet erwarteten `state` und PKCE-Verifier an
-die startende RP-Browser-Session und schickt den Browser zur Authorize-URL.
-Derselbe Browser meldet sich an; der Callback prüft `state`, tauscht den
-kurzlebigen Code,
-entfernt ihn aus der URL und erstellt seine eigene Session. Details:
-[Integration](docs/INTEGRATION.de.md).
+[API-Referenz](docs/API.de.md) · [Integrationsguide](docs/INTEGRATION.de.md)
 
 ## Deine Mail, dein Design
 
-Kopiere `resources/mail-templates` nach `storage/mail-templates`, bearbeite die
-rohen Dateien `subject.txt`, `plain.txt` und `html.html` und setze
-`MAIL_TEMPLATE_DIR=storage/mail-templates`. Die Vorschau erzeugt weder gültigen
-Token noch Mail:
+`resources/mail-templates` nach `storage/mail-templates` kopieren, die rohen
+Dateien `subject.txt`, `plain.txt` und `html.html` bearbeiten und
+`MAIL_TEMPLATE_DIR=storage/mail-templates` setzen.
 
 ```bash
 php bin/mail-preview.php --locale=de --format=html > preview.html
 ```
 
-Nur dokumentierte Platzhalter werden akzeptiert, HTML-Werte werden escaped und
-das Template-Verzeichnis bleibt lokal außerhalb von `public/`. Mehr steht unter
-[Konfiguration](docs/CONFIGURATION.de.md#eigene-mail-templates).
+Die Vorschau erzeugt keinen Token und versendet keine Mail. Nur dokumentierte
+Platzhalter sind erlaubt, HTML-Werte werden escaped und das Template-Verzeichnis
+bleibt lokal außerhalb von `public/`.
 
-## Wenn es größer wird
+## Vom Shared Hosting zum VPS
 
-Ohne Setup versucht MagicLink nach der HTTP-Antwort eine fällige Queue-Zeile.
-Bei mehr Traffic übernimmt ein Worker die Queue:
+Shared Hosting braucht keinen dauerhaft laufenden Worker: MagicLink versucht
+nach der Response eine Mail aus der Queue; ein Cronjob kann mehr abarbeiten.
+Auf dem VPS bleibt ein Worker aktiv:
 
 ```bash
 php bin/worker.php --loop
@@ -134,36 +115,33 @@ php bin/maintain.php --all
 php bin/status.php
 ```
 
-Für Shared-Hosting-Cron genügt `php bin/worker.php --once`. MySQL, Workerzahl,
-Queue-Kapazität, Zustellsemantik, Retries und Retention erklärt
-[Betrieb unter Last](docs/OPERATIONS.de.md).
-Der [reproduzierbare Performance-Check](docs/PERFORMANCE.md) misst den SQLite-Hot-Path
-getrennt von HTTP-, SMTP- und Netzwerklatenz.
+SQLite ist der konfigurationsfreie Default. MySQL ermöglicht mehrere Worker;
+entfernte Produktionsverbindungen brauchen CA, verifizierte Serveridentität und
+`mysqlnd`. Automatische Queue-, Worker-, State-Batch- und Maintenance-Größen
+bleiben begrenzt und lassen sich vollständig in `.env` überschreiben.
+
+Der reproduzierbare lokale Basislauf misst 0,515 ms Request-p50, 0,008 ms für
+einen State und 0,052 ms für 32 States bei 2 MiB Peak-Memory. Reale SMTP-,
+Storage- und Netzwerklatenz wird bewusst getrennt. [Methode und Ergebnisse](docs/PERFORMANCE.md).
 
 ## Sicherheitsgrenze
 
-MagicLink schützt den Login-Flow, nicht die Autorisierung deiner Anwendung oder
-ein kompromittiertes Postfach. Vor einem öffentlichen Deployment:
+Vor einem öffentlichen Deployment:
 
 ```bash
 php bin/doctor.php
 php bin/check.php
 ```
 
-Lies außerdem [`SECURITY.md`](SECURITY.md) und das [Threat Model](docs/THREAT-MODEL.md).
-Das optionale Client-Secret liegt auf beiden Servern, der PKCE-Verifier nur im
-Relying-Party-Backend. Der Callback prüft `state`, tauscht den Code sofort und
-leitet auf eine saubere URL weiter; niemals diese Werte an JavaScript geben oder
-den State-Endpunkt als Identitätsnachweis behandeln.
+MagicLink schützt die passwortlose Anmeldung. Es ersetzt nicht die Autorisierung
+deiner Anwendung, schützt kein kompromittiertes Postfach und macht keinen
+unsicheren Hosting-Account sicher. Vor Produktion gehören die
+[Security Policy](SECURITY.md), das [Threat Model](docs/THREAT-MODEL.md) und der
+[Betriebsleitfaden](docs/OPERATIONS.de.md) dazu.
 
-Badge und Sprach-Squircle stammen aus `IamAngusU/Badges`. Der anklickbare
-Stack-Marquee führt zu [`IamAngusU/icon-marquee`](https://github.com/IamAngusU/icon-marquee).
-Die aktuelle Link-Marke ist ein Platzhalter und kann später an einer kanonischen
-SVG-Quelle ersetzt werden.
+Produkt- und Sprachbadges kommen aus [`IamAngusU/Badges`](https://github.com/IamAngusU/Badges).
+Das klickbare Stack-Marquee unten öffnet immer [`IamAngusU/icon-marquee`](https://github.com/IamAngusU/icon-marquee).
 
-CI läuft wegen der getrennten GitHub-Abrechnung im öffentlichen, quellcodefreien
-Harness [`angusu-de/MagicLink-CI`](https://github.com/angusu-de/MagicLink-CI).
-Er liest nur den angeforderten privaten Commit über einen read-only Deploy Key;
-Aufbau und Proof-Modell stehen in [CI.md](docs/CI.md).
+<p align="center"><a href="https://github.com/IamAngusU/icon-marquee"><img src="docs/assets/stack-marquee.svg" width="780" alt="PHP, JavaScript, HTML, CSS, SQLite, MySQL, Apache und Nginx"></a></p>
 
-Dieses private Repository enthält derzeit keine öffentliche Softwarelizenz.
+<p align="center"><sub>Noch wurde keine öffentliche Softwarelizenz erteilt. Das aktuelle Link-Zeichen bleibt ein Platzhalter, bis das finale Logo vorliegt.</sub></p>
