@@ -17,10 +17,7 @@
   <a href="LICENSE"><img src="docs/assets/readme/repo-license.svg" height="40" alt="MIT licensed"></a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="54" alt="Live public MagicLink CI proof"></a>
-</p>
-<p align="center"><sub>Public CI on a separate account, same maintainer. The badge proves the named commit passed the published jobs; it is not a third-party audit.</sub></p>
+
 
 <p align="center"><a href="#quick-start">Quick start</a> · <a href="#why-magiclink">Why MagicLink?</a> · <a href="#bring-your-own-ui">Your UI</a> · <a href="#make-the-mail-yours">Your mail</a> · <a href="#from-shared-hosting-to-vps">Scale</a> · <a href="#security-boundary">Security</a> · <a href="docs/API.md">Docs</a></p>
 
@@ -28,19 +25,23 @@ MagicLink is a small self-hosted authentication service for ordinary PHP shared
 hosting and VPS deployments. It has no framework or Composer requirement, starts
 with SQLite and exposes the same versioned API to its built-in screen and yours.
 
+![MagicLink sign-in screen](docs/assets/sign-in.png)
+
+<sub>The included sign-in screen, captured locally with a development configuration.</sub>
+
 ## Quick start
 
 1. [Download the ready-to-upload ZIP](https://github.com/IamAngusU/MagicLink/releases/latest/download/magiclink-shared-hosting.zip) and upload it.
-2. With shell access, run `php bin/install.php` and answer three questions.
-3. Without a shell, copy `.env.example` to `.env` and set:
+2. Run `php bin/install.php`, or copy `.env.example` to `.env` and set the three values below.
+3. Open the domain; MagicLink creates SQLite, its schema and the application key.
+
+Without shell access, set:
 
 ```dotenv
 APP_URL=https://login.example.com
 MAIL_FROM_ADDRESS=no-reply@example.com
 MAGICLINK_ALLOWED_EMAILS=you@example.com
 ```
-
-4. Open the domain. MagicLink creates SQLite, its schema and the application key.
 
 <p align="center"><img src="docs/assets/terminal-setup.svg" width="900" alt="Guided MagicLink installation and doctor check in a terminal"></p>
 
@@ -122,6 +123,13 @@ The repeatable local baseline records a 0.515 ms request p50, 0.008 ms state
 lookup and 0.052 ms batch-of-32 lookup with a 2 MiB peak. Real SMTP, storage and
 network latency are intentionally measured separately. [Method and results](docs/PERFORMANCE.md).
 
+**Independent security review wanted.** No external audit has been completed. [Review scope and private reporting](docs/SECURITY-REVIEW.md).
+
+<p align="center">
+  <a href="https://github.com/angusu-de/MagicLink-CI/actions/workflows/ci.yml"><img src="https://raw.githubusercontent.com/angusu-de/MagicLink-CI/ci-proof/proof/ci-proof.svg" height="54" alt="Live public MagicLink CI proof"></a>
+</p>
+<p align="center"><sub>Public CI on a separate account, same maintainer. The badge proves the named commit passed the published jobs; it is not a third-party audit.</sub></p>
+
 ## Security boundary
 
 Before exposing an installation, run:
@@ -136,9 +144,7 @@ authorization, protect a compromised mailbox or make an unsafe hosting account
 safe. Read the [security policy](SECURITY.md), [threat model](docs/THREAT-MODEL.md)
 and [operations guide](docs/OPERATIONS.md) before production use.
 
-The product and language badges come from [`IamAngusU/Badges`](https://github.com/IamAngusU/Badges).
-The clickable stack marquee below always opens [`IamAngusU/icon-marquee`](https://github.com/IamAngusU/icon-marquee).
 
 <p align="center"><a href="https://github.com/IamAngusU/icon-marquee"><img src="docs/assets/stack-marquee.svg" width="780" alt="PHP, JavaScript, HTML, CSS, SQLite, MySQL, Apache and Nginx"></a></p>
 
-<p align="center"><sub>MIT licensed. See <a href="LICENSE">LICENSE</a>. The current link mark is a placeholder until the final logo is supplied.</sub></p>
+<p align="center"><sub>MIT licensed. See <a href="LICENSE">LICENSE</a>.</sub></p>

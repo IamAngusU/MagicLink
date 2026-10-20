@@ -56,3 +56,9 @@ Use GitHub's private Security Advisory flow for this repository. Include the
 affected commit, deployment mode, reproduction steps and whether a real token
 or email address was exposed. Do not place live tokens, SMTP credentials or
 `.env` contents in an issue.
+
+## Independent review
+
+An independent security review is actively sought; none has been completed.
+See [the scoped review invitation](docs/SECURITY-REVIEW.md) for priority paths
+and reporting instructions.
