@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Finalized the linked-ring SVG mark and added an actual sign-in screenshot in both README languages.
+- Simplified setup and added an explicit independent security-review invitation. No external audit is claimed.
+- Enabled private vulnerability reporting and kept the public CI evidence tied to the reviewed source commit.
+
+
 ## 0.4.1 — 2026-10-08
 
 - Licensed MagicLink under MIT and prepared the canonical repository and
