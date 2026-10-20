@@ -2,10 +2,15 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+$excluded = array_map(static fn (string $name): string => $root . DIRECTORY_SEPARATOR . $name, ['.git', 'vendor', 'storage', 'dist', '.phpunit.cache']);
+$sourceFiles = new RecursiveCallbackFilterIterator(
+    new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+    static fn (SplFileInfo $file): bool => !in_array($file->getPathname(), $excluded, true),
+);
+$iterator = new RecursiveIteratorIterator($sourceFiles);
 $failed = false;
 foreach ($iterator as $file) {
-    if (!$file->isFile() || $file->getExtension() !== 'php' || str_contains($file->getPathname(), DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR)) {
+    if (!$file->isFile() || $file->getExtension() !== 'php') {
         continue;
     }
     $command = escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file->getPathname());

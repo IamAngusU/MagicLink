@@ -71,6 +71,18 @@ jobs:
           php bin/check.php
           php bin/install.php --url=https://login.example.invalid --allow=owner@example.invalid --from=no-reply@example.invalid
           php bin/doctor.php
+          # Exercise the documented deployment/runtime ownership split too.
+          sudo useradd --system --user-group --no-create-home magiclink-runtime
+          sudo chown "$USER":magiclink-runtime .env
+          sudo chmod 0640 .env
+          sudo chown -R magiclink-runtime:magiclink-runtime storage
+          sudo chown "$USER":magiclink-runtime storage storage/.htaccess storage/.gitkeep
+          sudo chmod 2770 storage
+          sudo -u magiclink-runtime php bin/doctor.php
+          sudo -u magiclink-runtime test ! -w .env
+          sudo -u magiclink-runtime test ! -w src/App.php
+          # The deployment user's checks must not traverse private runtime data.
+          php bin/check.php
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: magiclink-verified-release

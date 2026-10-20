@@ -44,6 +44,7 @@ public harness. Authenticate both GitHub accounts once to dispatch the workflow.
 
 Releases live in the canonical repository. The release-proof workflow builds
 the ZIP, checks sensitive-file boundaries, runs the PHP suite on the extracted
-archive and exercises fresh installation and doctor checks. It retains the
+archive and exercises fresh installation and doctor checks under distinct
+deployment/runtime Unix accounts, including read-only code/configuration. It retains the
 exact verified archive and SHA-256 checksum for seven days. Its read-only token
 cannot publish a canonical release; a maintainer publishes those verified bytes.

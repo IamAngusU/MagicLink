@@ -5,6 +5,7 @@
 - Require explicit, session-bound identity confirmation for cross-browser links and every account switch, preventing silent login CSRF while preserving cross-device sign-in.
 - Reserve request capacity identically for every accepted identity until token expiry, including denied, delivered, consumed and superseded links. Retire expired or orphaned queued work before reusing capacity.
 - Select PHP's files handler explicitly in file-session mode; preserve host handlers in configured mode.
+- Keep source checks out of private runtime directories, and verify fresh ZIP installation with separate deployment/runtime Unix accounts in CI.
 - Correct VPS runtime ownership and add a German deployment guide. Clarify encrypted outbox storage, request-ID logging and PKCE boundaries.
 - Add regression coverage for confirmation scope, account switching, sequential allowlist probes and queue bounds across expiry/retention cycles on SQLite and MySQL.
 
