@@ -112,7 +112,7 @@ auch `LimitRequestBody`, `client_max_body_size`, `post_max_size` und
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | leer | optionale Anmeldung |
 | `MAIL_AUTO_DISPATCH` | `true` | eine Queue-Zeile nach der HTTP-Antwort verarbeiten |
 | `MAIL_WORKER_BATCH` | `auto` | SQLite 25, MySQL 100; Maximum 250 |
-| `MAIL_PENDING_MAX` | `auto` | Backpressure ab 500 Pending/Sending auf SQLite, 5000 auf MySQL |
+| `MAIL_PENDING_MAX` | `auto` | Feste Reservierungen bis zum Ablauf: 500 auf SQLite, 5000 auf MySQL; jede angenommene Identität zählt |
 | `MAIL_MAX_ATTEMPTS` | `5` | 1–20 Zustellversuche |
 | `MAIL_LOCK_TIMEOUT_SECONDS` | `300` | Claim-Lease und Recovery abgebrochener Worker |
 | `MAIL_RETENTION_SECONDS` | `604800` | fertige Queue-Zeilen behalten |

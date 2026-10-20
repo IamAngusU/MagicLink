@@ -14,8 +14,8 @@
 | Threat | Control |
 | --- | --- |
 | Access/proxy logs capture token | secret stays in URL fragment |
-| Mail scanner consumes GET link | GET renders exchange only; POST consumes |
-| Database leak exposes active token | purpose-separated HMAC only |
+| GET-only mail scanner consumes link | GET renders exchange only; POST consumes; an unbound browser additionally needs explicit identity confirmation |
+| Database leak exposes active token | token verifier is a purpose-separated HMAC; queued bearer URL is authenticated ciphertext requiring the separate application key |
 | Database leak exposes email | authenticated encryption envelope |
 | Link reuse | conditional update plus transaction |
 | Concurrent exchange | SQLite `BEGIN IMMEDIATE` or database transaction |
@@ -23,7 +23,8 @@
 | Email/account enumeration | uniform waiting state and decoy row |
 | SMTP timing reveals allowlist | request transaction queues allowed and decoy rows without network mail |
 | Request flooding | fixed-window global, IP and email HMAC counters plus a bounded queue |
-| Full-queue identity oracle | every identity receives the same capacity rejection |
+| Sequential capacity identity oracle | every accepted request reserves capacity until the same fixed expiry, regardless of allowlist result or delivery |
+| Login CSRF / silent account switch | unbound links and identity changes require a short-lived, session-bound exact-link confirmation |
 | Token guessing / counter growth | global, IP and selector exchange budgets before lookup/audit |
 | Cross-device session theft | state polling never returns identity or authenticates; only token exchange does |
 | Stored-data growth | deterministic due-checks, admission-derived batches, bounded catch-up and retention |

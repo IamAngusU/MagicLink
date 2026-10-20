@@ -287,10 +287,16 @@ function benchmarkConfig(string $benchmarkRoot): Config
 /** @return array<string,list<string>> */
 function queryPlans(PDO $pdo, int $pendingMax): array
 {
+    $zeroHash = str_repeat('0', 64);
+    $now = time();
     return [
-        'active_queue_count' => explainPlan(
+        'active_reservation_count' => explainPlan(
             $pdo,
-            "SELECT COUNT(*) FROM (SELECT id FROM mail_outbox WHERE status IN ('pending','sending') LIMIT {$pendingMax}) AS active_mail",
+            "SELECT COUNT(*) FROM (SELECT id FROM magic_links WHERE expires_at > {$now} LIMIT {$pendingMax}) AS active_reservations",
+        ),
+        'expired_mail_retirement' => explainPlan(
+            $pdo,
+            "SELECT o.id FROM mail_outbox o LEFT JOIN magic_links m ON m.selector = o.selector WHERE o.status IN ('pending','sending') AND (m.id IS NULL OR m.expires_at <= {$now}) ORDER BY o.id LIMIT 1",
         ),
         'handoff_by_code' => explainPlan(
             $pdo,
@@ -438,7 +444,10 @@ function runBurstWorker(string $benchmarkRoot, string $startFile, int $workerId,
 function childPhpCommand(): array
 {
     $command = [PHP_BINARY];
-    if (PHP_OS_FAMILY === 'Windows' && php_ini_loaded_file() === false) {
+    if (php_ini_loaded_file() !== false) {
+        $command[] = '-c';
+        $command[] = php_ini_loaded_file();
+    } elseif (PHP_OS_FAMILY === 'Windows') {
         $command[] = '-d';
         $command[] = 'extension_dir=' . (string) ini_get('extension_dir');
         foreach (['pdo_sqlite', 'sodium', 'openssl'] as $extension) {

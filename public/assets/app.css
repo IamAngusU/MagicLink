@@ -213,6 +213,8 @@ button.secondary { background: var(--ink); }
 
 .exchange-meter { height: 2px; overflow: hidden; background: var(--line); }
 .exchange-meter span { display: block; width: 35%; height: 100%; background: var(--action); animation: exchange 1.2s ease-in-out infinite alternate; }
+[data-exchange][data-awaiting-confirmation="true"] .exchange-meter { display: none; }
+.confirmation-identity { font-weight: 700; font-size: 1.2rem; overflow-wrap: anywhere; }
 [data-exchange][data-confirmed="true"] .exchange-meter span { width: 100%; background: var(--verified); animation: none; }
 [data-exchange][data-failed="true"] .exchange-meter span { width: 100%; background: var(--error); animation: none; }
 

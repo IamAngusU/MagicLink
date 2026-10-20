@@ -325,10 +325,36 @@ final class App
             return $this->apiProblem($request, 'request.csrf_failed', 'Reload the confirmation page and try again.', 419);
         }
         try {
+            $selector = (string) ($input['id'] ?? '');
+            $token = (string) ($input['token'] ?? '');
+            $confirmation = (string) ($input['confirmation'] ?? '');
+            if ($confirmation !== '') {
+                if (!Session::consumeLinkConfirmation($confirmation, $selector, $token)) {
+                    return $this->apiProblem($request, 'magic_link.confirmation_invalid', $this->config->locale() === 'de'
+                        ? 'Die Bestätigung ist abgelaufen oder hat sich geändert. Öffne den ursprünglichen Link erneut.'
+                        : 'The confirmation expired or changed. Open the original link again.', 409);
+                }
+            } else {
+                $preview = $this->service->preview($selector, $token, $request->ip(), Session::binding());
+                $switching = Session::email() !== null && Session::email() !== $preview['email'];
+                if (!$preview['requested_here'] || $switching) {
+                    $challenge = Session::beginLinkConfirmation($selector, $token, $preview['expires_at']);
+                    return $this->apiSuccess($request, 'magic_link.confirmation_required', [
+                        'state' => 'confirmation_required',
+                        'email' => $preview['email'],
+                        'account_switch' => $switching,
+                        'confirmation' => $challenge,
+                        'expires_at' => min($preview['expires_at'], time() + 120),
+                        'message' => $this->config->locale() === 'de'
+                            ? 'Prüfe die E-Mail-Adresse und bestätige die Anmeldung.'
+                            : 'Check the email address and confirm this sign-in.',
+                    ], 202);
+                }
+            }
             // Rotate the anonymous session before consuming the one-time token.
             // A storage/regeneration failure therefore leaves the link retryable.
             Session::rotateForAuthentication();
-            $result = $this->service->exchange((string) ($input['id'] ?? ''), (string) ($input['token'] ?? ''), $request->ip());
+            $result = $this->service->exchange($selector, $token, $request->ip());
             Session::authenticate($result['email']);
             $redirect = $this->successUrl();
             $handoff = null;

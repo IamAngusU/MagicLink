@@ -15,6 +15,7 @@ final class Session
         self::setIni('session.use_trans_sid', '0');
         self::setIni('session.lazy_write', '1');
         if ($config->string('SESSION_STORAGE', 'files') === 'files') {
+            self::setIni('session.save_handler', 'files');
             self::configureFileStorage($config);
             self::setIni('session.gc_maxlifetime', (string) min(
                 $config->int('SESSION_IDLE_SECONDS', 28800),
@@ -77,6 +78,42 @@ final class Session
     {
         $email = $_SESSION['auth_email'] ?? null;
         return is_string($email) && $email !== '' ? $email : null;
+    }
+
+    public static function beginLinkConfirmation(string $selector, string $token, int $expiresAt): string
+    {
+        $pending = $_SESSION['_link_confirmations'] ?? [];
+        $pending = is_array($pending) ? $pending : [];
+        $now = time();
+        $pending = array_filter($pending, static fn (mixed $item): bool => is_array($item) && (int) ($item['expires_at'] ?? 0) > $now);
+        while (count($pending) >= 8) {
+            array_shift($pending);
+        }
+        $challenge = bin2hex(random_bytes(32));
+        $pending[$challenge] = [
+            'selector' => $selector,
+            'token_hash' => hash('sha256', $token),
+            'binding' => self::binding(),
+            'identity' => self::email(),
+            'expires_at' => min($expiresAt, $now + 120),
+        ];
+        $_SESSION['_link_confirmations'] = $pending;
+        return $challenge;
+    }
+
+    public static function consumeLinkConfirmation(string $challenge, string $selector, string $token): bool
+    {
+        $pending = $_SESSION['_link_confirmations'] ?? [];
+        if (!is_array($pending) || !isset($pending[$challenge]) || !is_array($pending[$challenge])) {
+            return false;
+        }
+        $item = $pending[$challenge];
+        unset($_SESSION['_link_confirmations'][$challenge]);
+        return (int) ($item['expires_at'] ?? 0) > time()
+            && ($item['selector'] ?? null) === $selector
+            && ($item['identity'] ?? null) === self::email()
+            && hash_equals((string) ($item['binding'] ?? ''), self::binding())
+            && hash_equals((string) ($item['token_hash'] ?? ''), hash('sha256', $token));
     }
 
     public static function bindHandoffRequest(string $request): void

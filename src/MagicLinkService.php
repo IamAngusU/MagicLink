@@ -39,14 +39,27 @@ final class MagicLinkService
 
             $this->rateLimit('request|email|' . $emailLookup, $this->config->int('MAGICLINK_EMAIL_LIMIT', 5), $this->config->int('MAGICLINK_RATE_WINDOW', 3600), $now);
             $pendingMax = $this->tuning->pendingMailMax();
-            $queued = $this->pdo->query("SELECT COUNT(*) FROM (SELECT id FROM mail_outbox WHERE status IN ('pending','sending') LIMIT {$pendingMax}) AS active_mail");
+            // Every accepted identity reserves a slot until the same fixed
+            // expiry, including denied, delivered, consumed and replaced links.
+            // Delivery-dependent accounting leaks the allowlist through the
+            // next request's capacity response.
+            $queued = $this->pdo->prepare("SELECT COUNT(*) FROM (SELECT id FROM magic_links WHERE expires_at > ? LIMIT {$pendingMax}) AS active_reservations");
+            $queued->execute([$now]);
             if ((int) $queued->fetchColumn() >= $pendingMax) {
-                // Reject every identity uniformly. Allowing only an identity
-                // with an existing pending row to proceed would expose a
-                // queue-capacity membership oracle through 202 versus 429.
                 // Keep the counters so this expensive path remains bounded.
                 $this->transaction->commit();
                 throw new RateLimited('Mail delivery is temporarily at capacity. Please try again later.', 60);
+            }
+            // Before reusing an expired reservation, retire at most one expired
+            // queued message. Each admission can add at most one active message,
+            // so stale pending/sending work cannot grow across TTL cycles. Do
+            // this for denied identities too; never expose a separate mail gate.
+            $expired = $this->pdo->prepare("SELECT o.id FROM mail_outbox o LEFT JOIN magic_links m ON m.selector = o.selector WHERE o.status IN ('pending','sending') AND (m.id IS NULL OR m.expires_at <= ?) ORDER BY o.id LIMIT 1");
+            $expired->execute([$now]);
+            $expiredId = $expired->fetchColumn();
+            if ($expiredId !== false) {
+                $retire = $this->pdo->prepare("UPDATE mail_outbox SET status = 'failed', lock_token = NULL, locked_at = NULL, last_error_hash = ? WHERE id = ? AND status IN ('pending','sending')");
+                $retire->execute([$this->crypto->hmac('mail-error', 'expired-before-delivery'), (int) $expiredId]);
             }
             $deliverable = $this->emailAllowed($email);
             $selector = 'ml_' . bin2hex(random_bytes(12));
@@ -160,6 +173,25 @@ final class MagicLinkService
     /** @return array{state:string,email:string} */
     public function exchange(string $selector, string $token, string $ipAddress): array
     {
+        $result = $this->exchangeLink($selector, $token, $ipAddress, true);
+        return ['state' => $result['state'], 'email' => $result['email']];
+    }
+
+    /** @return array{state:string,email:string,expires_at:int,requested_here:bool} */
+    public function preview(string $selector, string $token, string $ipAddress, string $sessionBinding): array
+    {
+        $result = $this->exchangeLink($selector, $token, $ipAddress, false);
+        return [
+            'state' => $result['state'],
+            'email' => $result['email'],
+            'expires_at' => $result['expires_at'],
+            'requested_here' => hash_equals($result['session_binding'], $this->crypto->hmac('session', $sessionBinding)),
+        ];
+    }
+
+    /** @return array{state:string,email:string,expires_at:int,session_binding:string} */
+    private function exchangeLink(string $selector, string $token, string $ipAddress, bool $consumeToken): array
+    {
         $now = time();
         $ipHash = $this->crypto->hmac('ip', $ipAddress);
         $selectorHash = $this->crypto->hmac('selector', substr($selector, 0, 64));
@@ -174,7 +206,7 @@ final class MagicLinkService
             }
             $this->rateLimit('exchange|selector|' . $selectorHash, $this->config->int('MAGICLINK_EXCHANGE_SELECTOR_LIMIT', 10), $window, $now);
 
-            $statement = $this->pdo->prepare('SELECT token_hash,email_lookup,email_cipher,deliverable,expires_at,consumed_at FROM magic_links WHERE selector = ? LIMIT 1');
+            $statement = $this->pdo->prepare('SELECT token_hash,email_lookup,email_cipher,session_binding,deliverable,expires_at,consumed_at FROM magic_links WHERE selector = ? LIMIT 1');
             $statement->execute([$selector]);
             $row = $statement->fetch();
             if (!is_array($row)) {
@@ -194,15 +226,22 @@ final class MagicLinkService
                 $this->transaction->commit();
                 throw new InvalidLink('The link is invalid or expired.');
             }
-            $consume = $this->pdo->prepare('UPDATE magic_links SET consumed_at = ?, verified_at = ? WHERE selector = ? AND consumed_at IS NULL');
-            $consume->execute([$now, $now, $selector]);
-            if ($consume->rowCount() !== 1) {
-                throw new InvalidLink('The link was already used.');
-            }
-            $this->audit('magic_link.verified', (string) $row['email_lookup'], $ipHash, ['selector' => $selector]);
             $email = $this->crypto->decrypt((string) $row['email_cipher']);
+            if ($consumeToken) {
+                $consume = $this->pdo->prepare('UPDATE magic_links SET consumed_at = ?, verified_at = ? WHERE selector = ? AND consumed_at IS NULL');
+                $consume->execute([$now, $now, $selector]);
+                if ($consume->rowCount() !== 1) {
+                    throw new InvalidLink('The link was already used.');
+                }
+                $this->audit('magic_link.verified', (string) $row['email_lookup'], $ipHash, ['selector' => $selector]);
+            }
             $this->transaction->commit();
-            return ['state' => MagicLinkState::Verified->value, 'email' => $email];
+            return [
+                'state' => $consumeToken ? MagicLinkState::Verified->value : MagicLinkState::Waiting->value,
+                'email' => $email,
+                'expires_at' => (int) $row['expires_at'],
+                'session_binding' => (string) $row['session_binding'],
+            ];
         } catch (Throwable $error) {
             $this->transaction->rollback();
             throw $error;

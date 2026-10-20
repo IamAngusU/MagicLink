@@ -27,10 +27,13 @@ try {
         . "((status = 'pending' AND expires_at > ?) OR (status = 'authorized' AND code_expires_at > ?))"
     );
     $activeHandoffs->execute([$now, $now]);
+    $reservations = $pdo->prepare('SELECT COUNT(*) FROM magic_links WHERE expires_at > ?');
+    $reservations->execute([$now]);
 
     $status = [
         'time' => gmdate(DATE_ATOM, $now),
         'queue' => $queue,
+        'active_request_reservations' => (int) $reservations->fetchColumn(),
         'oldest_pending_age_seconds' => $oldest === false || $oldest === null ? null : max(0, $now - (int) $oldest),
         'stale_claims' => (int) $stale->fetchColumn(),
         'last_delivery_at' => $lastDelivery === false || $lastDelivery === null ? null : gmdate(DATE_ATOM, (int) $lastDelivery),
@@ -40,7 +43,7 @@ try {
             'database_driver' => $kernel->config->string('DB_DRIVER'),
             'database_tls_mode' => $kernel->config->string('DB_SSL_MODE', 'auto'),
             'session_storage' => $kernel->config->string('SESSION_STORAGE', 'files'),
-            'session_handler' => (string) ini_get('session.save_handler'),
+            'session_handler' => $kernel->config->string('SESSION_STORAGE', 'files') === 'files' ? 'files' : (string) ini_get('session.save_handler'),
             'session_gc_maxlifetime' => $kernel->config->string('SESSION_STORAGE', 'files') === 'files'
                 ? min($kernel->config->int('SESSION_IDLE_SECONDS', 28800), $kernel->config->int('SESSION_ABSOLUTE_SECONDS', 604800))
                 : null,
@@ -68,6 +71,7 @@ try {
     )) . PHP_EOL;
     echo 'Oldest pending: ' . ($status['oldest_pending_age_seconds'] === null ? 'none' : $status['oldest_pending_age_seconds'] . 's') . PHP_EOL;
     echo 'Stale claims: ' . $status['stale_claims'] . PHP_EOL;
+    echo sprintf('Request reservations: %d/%d (until token expiry)%s', $status['active_request_reservations'], $status['effective']['pending_mail_max'], PHP_EOL);
     echo 'Last delivery: ' . ($status['last_delivery_at'] ?? 'none') . PHP_EOL;
     echo 'Last maintenance: ' . ($status['last_maintenance_at'] ?? 'never') . PHP_EOL;
     echo 'Active handoffs: ' . $status['active_handoffs'] . PHP_EOL;

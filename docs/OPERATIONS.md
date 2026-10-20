@@ -21,12 +21,20 @@ SMTP.
 ## Backpressure before failure
 
 Requests pass a global fixed-window budget before IP and identity budgets. The
-service also counts `pending` plus `sending` outbox rows before accepting more
-work. `MAIL_PENDING_MAX=auto` permits 500 on SQLite and 5000 on MySQL; an explicit
-10–100000 value remains under operator control. Capacity returns HTTP 429 with a
-retry hint instead of growing the queue without bound. Every identity is rejected
-identically at the cap—including one with a pending row—so capacity cannot
-become an account-membership oracle.
+service also reserves one slot for every accepted request until its fixed token
+expiry. `MAIL_PENDING_MAX=auto` permits 500 simultaneous reservations on SQLite
+and 5000 on MySQL; an explicit 10–100000 value remains under operator control.
+Denied identities and delivered, consumed or superseded links keep their slot
+until expiry. This makes candidate-then-probe admission independent of allowlist
+membership. A full reservation window returns HTTP 429 with a retry hint.
+
+Each admission retires at most one expired or orphaned pending/sending message
+before adding new work, preserving the active-mail bound even with a stopped
+worker. After lowering the configured cap, drain existing work before expecting
+the smaller bound. Plan capacity for **all accepted requests over the token
+TTL**, rather than only undelivered mail. With the default 900-second TTL, 500
+reservations support at most 500 accepted requests in that rolling interval,
+even when delivery is immediate. Global/IP/email budgets remain separate limits.
 
 Use the global request budget for application protection, but keep upstream
 CDN/WAF and host connection limits for volumetric attacks. App limits are not a

@@ -56,7 +56,7 @@ The email is the easy part. The surrounding failure modes are the product:
 | The problem | What MagicLink does |
 | --- | --- |
 | Tokens leak through server logs | The secret stays in the URL fragment and is consumed only by a protected POST. |
-| A link signs in the wrong browser | Request state is bound to the initiating browser; only the browser holding the secret receives a session. |
+| A foreign link silently changes the account | A different browser or account switch must explicitly confirm the actual identity before authentication. Polling alone never signs in. |
 | Responses reveal whether an account exists | Allowed and denied identities follow the same public path, timing budget and state model. |
 | Mail fails halfway through a request | An encrypted outbox adds bounded retries, leases, stable message IDs and explicit terminal states. |
 | A burst becomes an outage | Global, IP, identity and selector budgets combine with queue backpressure and bounded automatic cleanup. |

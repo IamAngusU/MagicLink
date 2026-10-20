@@ -28,13 +28,16 @@ Bei Fehlern ist `data` null; `error` enthält `message` und gegebenenfalls
 Browser-Aufrufe senden Cookies (`credentials: "include"`). Schreibende
 Browser-Requests kopieren den Token aus `GET /api/v1/config` in
 `X-CSRF-Token`. Eine optionale `X-Request-ID` mit 8–64 sicheren Zeichen wird in
-Antwort und Logs übernommen; sonst erzeugt der Server eine.
+Antwort und `meta.request_id` übernommen; sonst erzeugt der Server eine.
+Audit-Zeilen enthalten diese ID nicht. Korrelation mit Host-Logs muss separat
+eingerichtet werden.
 
 1. `GET /api/v1/config`
 2. `POST /api/v1/requests` mit `{ "email": "you@example.com" }`
 3. `GET /api/v1/state?id=…` nach `meta.poll_after_ms` pollen
 4. Die Mail öffnet `/auth/check`; die Seite entfernt das Fragment aus der URL
-   und verbraucht es über `POST /api/v1/exchange`
+   und übergibt es an `POST /api/v1/exchange`; bei einem anderen Browser oder
+   Kontowechsel muss die zurückgegebene Identität erst angezeigt und bestätigt werden
 5. Nur der Link-Browser erhält die authentifizierte MagicLink-Session
 
 Der anfragende Browser darf `verified` sehen, erhält aber weder E-Mail-Adresse
@@ -57,7 +60,9 @@ Prüfe `features.server_handoff`, bevor die UI einen Handoff anbietet.
 Antwortet mit HTTP 202 und `id`, `state`, `masked_email`, `expires_at`. Erlaubte
 und nicht erlaubte Identitäten haben dieselbe öffentliche Form und denselben
 Queue-Pfad; nur erlaubte Einträge werden zugestellt. IP-, Identitäts- und
-globales Zeitfenster-Budget sowie Queue-Kapazität können HTTP 429 auslösen.
+globales Zeitfenster-Budget sowie feste Kapazitätsreservierungen können HTTP 429
+auslösen. Jede angenommene Anfrage reserviert bis zum Ablauf einen Platz, auch
+abgewiesene Identitäten sowie bereits zugestellte oder ersetzte Links.
 
 ### `GET /api/v1/state?id=ml_…`
 
@@ -93,13 +98,29 @@ dem Batch. Der Request benötigt CSRF-Schutz.
 { "id": "ml_…", "token": "fragment-secret" }
 ```
 
-Verbraucht den Mail-Token atomar und rotiert die Session-ID. Normalerweise ruft
-die mitgelieferte `/auth/check`-Seite ihn auf, nachdem sie das URL-Fragment
-entfernt hat. Hat derselbe Browser vorher eine RP-erzeugte `authorize_url`
+Die mitgelieferte `/auth/check`-Seite ruft den Endpoint nach Entfernen des
+URL-Fragments auf. Ein in diesem Browser angeforderter Link darf automatisch
+anmelden, solange keine andere Identität ersetzt wird. Sonst liefert HTTP 202
+mit Code `magic_link.confirmation_required` die Felder `email`, `account_switch`,
+`confirmation` und `expires_at`. Diese Antwort verbraucht den Link nicht und
+meldet weder an noch autorisiert sie einen Handoff. Zeige die tatsächliche
+E-Mail-Adresse und den Hinweis auf einen Kontowechsel. Erst nach bewusster
+Bestätigung werden dieselben `id`, `token` und die gelieferte `confirmation`
+mit derselben Session und CSRF-Header erneut gesendet. Challenges niemals
+automatisch bestätigen.
+
+Die Challenge gilt höchstens zwei Minuten, ist einmalig und an Session,
+Link/Secret und aktuelle Identität gebunden. Abweichungen liefern HTTP 409 mit
+`magic_link.confirmation_invalid`; öffne den ursprünglichen Link erneut.
+HTTP 200 `magic_link.verified` verbraucht den Token atomar und rotiert die
+Session-ID. Vorschau und Verbrauch zählen jeweils gegen die Exchange-Budgets.
+Hat derselbe Browser vorher eine RP-erzeugte `authorize_url`
 geöffnet, schließt MagicLink auch diese Transaktion ab: `data.redirect` bringt
 Authorization-`code` und ursprünglichen `state` zum registrierten Callback;
 `data.handoff` meldet `authorized`, `retryable` oder `unavailable`. Der Mail-Token
 wird nie weitergereicht.
+
+![Mitgelieferte Identitätsbestätigung mit einer lokalen Entwicklungsidentität](assets/confirmation.png)
 
 ### `GET /api/v1/session`
 

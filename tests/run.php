@@ -192,8 +192,80 @@ $exchangeResponse = dispatch($app, 'POST', '/api/v1/exchange', [
     'token' => $handoffToken,
     '_csrf' => 'csrf-clicker',
 ], ['Origin' => 'http://127.0.0.1:8080']);
-expect($exchangeResponse->status() === 200, 'Legitimate token exchange must succeed.');
+expect($exchangeResponse->status() === 202, 'A different browser must require identity confirmation.');
+$confirmationPayload = responseJson($exchangeResponse);
+expect(($confirmationPayload['code'] ?? '') === 'magic_link.confirmation_required', 'The API must distinguish confirmation from authentication.');
+expect($confirmationPayload['data']['email'] === 'owner@example.com' && $confirmationPayload['data']['account_switch'] === false, 'Confirmation must identify the actual account.');
+expect(Session::email() === null && !$service->state($handoffSelector, 'browser-requester')['verified'], 'Preview must not authenticate or consume the link.');
+$confirmation = $confirmationPayload['data']['confirmation'];
+$exchangeResponse = dispatch($app, 'POST', '/api/v1/exchange', [
+    'id' => $handoffSelector,
+    'token' => $handoffToken,
+    'confirmation' => $confirmation,
+    '_csrf' => 'csrf-clicker',
+], ['Origin' => 'http://127.0.0.1:8080']);
+expect($exchangeResponse->status() === 200, 'Deliberately confirmed cross-device exchange must succeed.');
 expect(Session::email() === 'owner@example.com', 'Link-presenting browser must become authenticated.');
+expect(!Session::consumeLinkConfirmation($confirmation, $handoffSelector, $handoffToken), 'A confirmation must be single-use.');
+
+// Consent is enforced server-side for account switches, even in the issuing
+// browser. A client-supplied boolean cannot skip the exact-link challenge.
+$queuedCredentials = static function (string $email, string $binding) use ($service, $database, $crypto): array {
+    $link = $service->request($email, $binding, '192.0.2.45');
+    $query = $database->pdo()->prepare('SELECT payload_cipher FROM mail_outbox WHERE selector = ?');
+    $query->execute([$link['selector']]);
+    $mail = json_decode($crypto->decrypt((string) $query->fetchColumn()), true, 8, JSON_THROW_ON_ERROR);
+    parse_str((string) parse_url($mail['url'], PHP_URL_FRAGMENT), $fragment);
+    return [$link['selector'], $fragment['token']];
+};
+$exchangeInput = static fn (string $id, string $secret, array $extra = []): array => $extra + ['id' => $id, 'token' => $secret, '_csrf' => Session::csrf()];
+[$switchId, $switchToken] = $queuedCredentials('attacker@example.com', Session::binding());
+$switchResponse = dispatch($app, 'POST', '/auth/exchange', $exchangeInput($switchId, $switchToken, ['confirmed' => 'true']));
+$switchPayload = responseJson($switchResponse);
+expect($switchResponse->status() === 202 && $switchPayload['data']['account_switch'] === true, 'An issuing browser must explicitly confirm a different identity.');
+expect(Session::email() === 'owner@example.com', 'A preview must preserve the existing identity.');
+$switchConfirmation = $switchPayload['data']['confirmation'];
+$foreignSession = $_SESSION;
+$_SESSION = ['_binding' => 'foreign-browser', '_csrf' => 'foreign-csrf'];
+$foreignResponse = dispatch($app, 'POST', '/api/v1/exchange', $exchangeInput($switchId, $switchToken, ['confirmation' => $switchConfirmation]));
+expect($foreignResponse->status() === 409 && Session::email() === null, 'A copied challenge must not work in another browser.');
+$_SESSION = $foreignSession;
+$csrfFailure = dispatch($app, 'POST', '/api/v1/exchange', $exchangeInput($switchId, $switchToken, ['confirmation' => $switchConfirmation, '_csrf' => 'wrong']));
+expect($csrfFailure->status() === 419 && Session::email() === 'owner@example.com', 'Confirmation must retain CSRF protection.');
+$switchResult = dispatch($app, 'POST', '/api/v1/exchange', $exchangeInput($switchId, $switchToken, ['confirmation' => $switchConfirmation]));
+expect($switchResult->status() === 200 && Session::email() === 'attacker@example.com', 'An explicit account switch must remain possible.');
+
+// Same-browser normal login remains automatic when no identity is replaced.
+unset($_SESSION['auth_email']);
+[$sameId, $sameToken] = $queuedCredentials('same-browser@example.com', Session::binding());
+$sameResponse = dispatch($app, 'POST', '/api/v1/exchange', $exchangeInput($sameId, $sameToken));
+expect($sameResponse->status() === 200 && Session::email() === 'same-browser@example.com', 'A matching requester binding must retain the automatic flow.');
+
+// Challenge scope includes link, secret, browser binding, identity and expiry.
+$challengeCases = [
+    ['selector' => 'ml_' . str_repeat('a', 24)],
+    ['token_hash' => hash('sha256', 'different-secret')],
+    ['binding' => 'another-binding'],
+    ['identity' => 'another-identity@example.com'],
+    ['expires_at' => time() - 1],
+];
+foreach ($challengeCases as $changed) {
+    $challenge = Session::beginLinkConfirmation($sameId, $sameToken, time() + 900);
+    $_SESSION['_link_confirmations'][$challenge] = $changed + $_SESSION['_link_confirmations'][$challenge];
+    expect(!Session::consumeLinkConfirmation($challenge, $sameId, $sameToken), 'A changed or expired confirmation must fail closed.');
+}
+for ($index = 0; $index < 12; $index++) {
+    Session::beginLinkConfirmation($sameId, $sameToken, time() + 900);
+}
+expect(count($_SESSION['_link_confirmations']) === 8, 'Pending confirmations must have a fixed session-memory bound.');
+
+[$expiresId, $expiresToken] = $queuedCredentials('expires-before-confirm@example.com', 'another-browser');
+$expiresPreview = dispatch($app, 'POST', '/api/v1/exchange', $exchangeInput($expiresId, $expiresToken));
+$expiresPayload = responseJson($expiresPreview);
+$expireLink = $database->pdo()->prepare('UPDATE magic_links SET expires_at = ? WHERE selector = ?');
+$expireLink->execute([time() - 1, $expiresId]);
+$expiresResponse = dispatch($app, 'POST', '/api/v1/exchange', $exchangeInput($expiresId, $expiresToken, ['confirmation' => $expiresPayload['data']['confirmation']]));
+expect($expiresResponse->status() === 410 && Session::email() === 'same-browser@example.com', 'Final exchange must revalidate token expiry without replacing the current identity.');
 
 $_SESSION = [
     '_binding' => 'browser-requester',
@@ -260,5 +332,50 @@ $database->pdo()->exec('UPDATE magic_links SET expires_at = ' . $old);
 $database->pdo()->exec('UPDATE audit_events SET created_at = ' . $old);
 $cleanup = $maintenance->runIfDue(250, true);
 expect($cleanup['links'] > 0 && $cleanup['audit'] > 0, 'Maintenance must remove retained link and audit rows.');
+
+// Admission reservations must hide the candidate -> next-probe transition,
+// independently of allowlist outcome and delivery/consumption state. Run these
+// cases on the selected test database, including the MySQL CI job.
+$capacityConfig = Config::fromArray($temporary, $databaseSettings + [
+    'APP_ENV' => 'test', 'APP_URL' => 'http://127.0.0.1:8080',
+    'MAIL_TRANSPORT' => 'log', 'MAIL_FROM_ADDRESS' => 'test@example.com',
+    'MAGICLINK_ALLOWED_DOMAINS' => 'example.com',
+    'MAGICLINK_IP_LIMIT' => '100', 'MAGICLINK_EMAIL_LIMIT' => '100',
+    'MAIL_PENDING_MAX' => '10',
+]);
+$capacityService = new MagicLinkService($database->pdo(), $capacityConfig, $crypto);
+foreach (['candidate@example.com', 'candidate@example.net'] as $candidate) {
+    $database->pdo()->exec('DELETE FROM mail_outbox');
+    $database->pdo()->exec('DELETE FROM magic_links');
+    $database->pdo()->exec('DELETE FROM rate_limit_counters');
+    for ($index = 0; $index < 9; $index++) {
+        $capacityService->request('padding-' . $index . '@example.com', 'padding', '192.0.2.80');
+    }
+    $capacityService->request($candidate, 'candidate', '192.0.2.81');
+    expectRateLimited(fn () => $capacityService->request('probe@example.com', 'probe', '192.0.2.82'), 'The next probe must be rejected for both allowed and denied candidates.');
+    $outbox->run(25);
+    expectRateLimited(fn () => $capacityService->request('padding-0@example.com', 'repeat', '192.0.2.82'), 'Delivery or replacement must not free a reservation before fixed expiry.');
+}
+
+// Expired/orphaned pending and leased rows must not accumulate when fixed
+// reservations are reused while the delivery worker remains stopped.
+$database->pdo()->exec('DELETE FROM mail_outbox');
+$database->pdo()->exec('DELETE FROM magic_links');
+$database->pdo()->exec('DELETE FROM rate_limit_counters');
+for ($index = 0; $index < 10; $index++) {
+    $capacityService->request('stale-' . $index . '@example.com', 'stale', '192.0.2.83');
+}
+$database->pdo()->exec("UPDATE mail_outbox SET status = 'sending', lock_token = 'old-owner', locked_at = 1");
+$database->pdo()->exec('UPDATE magic_links SET expires_at = ' . (time() - 1));
+for ($cycle = 0; $cycle < 2; $cycle++) {
+    for ($index = 0; $index < 10; $index++) {
+        $capacityService->request('recycled-' . $cycle . '-' . $index . '@example.com', 'recycled', '192.0.2.84');
+        expect((int) $database->pdo()->query("SELECT COUNT(*) FROM mail_outbox WHERE status IN ('pending','sending')")->fetchColumn() <= 10, 'Reusing capacity must preserve the physical active-mail bound.');
+    }
+    // Simulate retention deleting expired link rows before a stopped worker
+    // reaches their outbox rows. The next cycle must retire those orphans too.
+    $database->pdo()->exec('DELETE FROM magic_links');
+}
+expect((int) $database->pdo()->query("SELECT COUNT(*) FROM mail_outbox WHERE lock_token = 'old-owner'")->fetchColumn() === 0, 'Retired expired leases must lose ownership.');
 
 echo "All MagicLink tests passed.\n";

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 — 2026-10-20
+
+- Require explicit, session-bound identity confirmation for cross-browser links and every account switch, preventing silent login CSRF while preserving cross-device sign-in.
+- Reserve request capacity identically for every accepted identity until token expiry, including denied, delivered, consumed and superseded links. Retire expired or orphaned queued work before reusing capacity.
+- Select PHP's files handler explicitly in file-session mode; preserve host handlers in configured mode.
+- Correct VPS runtime ownership and add a German deployment guide. Clarify encrypted outbox storage, request-ID logging and PKCE boundaries.
+- Add regression coverage for confirmation scope, account switching, sequential allowlist probes and queue bounds across expiry/retention cycles on SQLite and MySQL.
+
 ## 0.4.2
 
 - Finalized the linked-ring SVG mark and added an actual sign-in screenshot in both README languages.

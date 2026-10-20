@@ -36,7 +36,7 @@ jobs:
           extensions: pdo_sqlite, openssl, sodium
           coverage: none
       - run: php bin/check.php
-      - name: Build without publishing source
+      - name: Build and verify the release package
         shell: bash
         run: |
           set -euo pipefail
@@ -65,9 +65,17 @@ jobs:
           grep -Fx 'LimitRequestBody 16384' dist/package/.htaccess
           sha256sum dist/magiclink-shared-hosting.zip > dist/SHA256SUMS
           cat dist/SHA256SUMS
+          mkdir -p /tmp/magiclink-release-smoke
+          unzip -q dist/magiclink-shared-hosting.zip -d /tmp/magiclink-release-smoke
+          cd /tmp/magiclink-release-smoke
+          php bin/check.php
+          php bin/install.php --url=https://login.example.invalid --allow=owner@example.invalid --from=no-reply@example.invalid
+          php bin/doctor.php
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: magiclink-release-checksum
-          path: dist/SHA256SUMS
+          name: magiclink-verified-release
+          path: |
+            dist/magiclink-shared-hosting.zip
+            dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 7

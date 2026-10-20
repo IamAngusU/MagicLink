@@ -21,12 +21,22 @@ Dann wartet die öffentliche Latenz nie auf SMTP.
 ## Backpressure vor dem Ausfall
 
 Requests passieren zuerst ein globales festes Zeitfenster-Budget, danach IP- und
-Identitätsbudgets. Zusätzlich zählt der Service `pending` plus `sending`, bevor er
-mehr Arbeit annimmt. `MAIL_PENDING_MAX=auto` erlaubt 500 auf SQLite und 5000 auf
-MySQL; ein expliziter Wert von 10–100000 bleibt unter Betreiberkontrolle. Bei
-Kapazität antwortet die API mit HTTP 429 und Retry-Hinweis, statt die Queue
-unbegrenzt wachsen zu lassen. Am Cap werden alle Identitäten identisch abgewiesen
-– auch mit bereits wartender Zeile. So wird Kapazität nicht zum Account-Orakel.
+Identitätsbudgets. Zusätzlich reserviert jede angenommene Anfrage einen Platz
+bis zum festen Token-Ablauf. `MAIL_PENDING_MAX=auto` erlaubt gleichzeitig 500
+Reservierungen auf SQLite und 5000 auf MySQL; explizit sind 10–100000 möglich.
+Auch nicht erlaubte Identitäten sowie zugestellte, verbrauchte oder ersetzte
+Links behalten ihren Platz bis zum Ablauf. Damit hängt auch ein nachfolgender
+Kapazitäts-Probeaufruf nicht von der Allowlist ab. Bei voller Reservierung
+antwortet die API mit HTTP 429 und Retry-Hinweis.
+
+Vor jeder neuen Anfrage wird höchstens eine abgelaufene oder verwaiste
+Pending-/Sending-Nachricht stillgelegt. Dadurch wächst aktive Mail-Arbeit auch
+bei gestopptem Worker nicht über das Limit. Nach einer Absenkung des Limits
+muss vorhandene Arbeit erst abgebaut werden. Plane Kapazität für **alle
+angenommenen Anfragen während der Token-TTL**, nicht nur für unzugestellte
+Mails. Bei 900 Sekunden TTL erlauben 500 Plätze höchstens 500 Annahmen in diesem
+rollierenden Intervall, auch bei sofortiger Zustellung. Globale, IP- und
+E-Mail-Budgets gelten zusätzlich.
 
 Das globale Budget schützt die Anwendung. Für volumetrische Angriffe bleiben
 CDN/WAF- und Host-Verbindungslimits davor nötig; App-Limits sind kein DDoS-Dienst.

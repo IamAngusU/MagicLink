@@ -90,8 +90,9 @@ client secret:
 ```
 
 Redirect the browser to the returned `data.authorize_url`. Do not construct this
-URL yourself. Only the S256 challenge leaves the RP; the verifier stays on its
-server with that transaction.
+URL yourself. Only the S256 challenge enters the browser channel. The verifier
+stays in the RP's server session until its backend sends it to MagicLink's
+server-to-server exchange endpoint.
 
 ### 2. Complete MagicLink in the same browser
 

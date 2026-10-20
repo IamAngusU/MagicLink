@@ -112,7 +112,7 @@ multipart uploads. If you raise `HTTP_MAX_BODY_BYTES`, raise the matching
 | `SMTP_USERNAME`, `SMTP_PASSWORD` | empty | Optional authentication |
 | `MAIL_AUTO_DISPATCH` | `true` | Process one queue item after the HTTP response |
 | `MAIL_WORKER_BATCH` | `auto` | SQLite 25, MySQL 100; maximum 250 |
-| `MAIL_PENDING_MAX` | `auto` | Backpressure at 500 pending/sending rows on SQLite, 5000 on MySQL |
+| `MAIL_PENDING_MAX` | `auto` | Fixed-expiry request reservations: 500 on SQLite, 5000 on MySQL; all accepted identities count |
 | `MAIL_MAX_ATTEMPTS` | `5` | 1–20 delivery attempts |
 | `MAIL_LOCK_TIMEOUT_SECONDS` | `300` | Claim lease timeout and crashed-worker recovery |
 | `MAIL_RETENTION_SECONDS` | `604800` | Retain completed queue rows |

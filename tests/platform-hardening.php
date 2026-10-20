@@ -195,10 +195,31 @@ try {
 }
 
 $safeSessions = platformConfig($temporary, ['SESSION_SAVE_PATH' => 'storage/sessions']);
+final class PlatformSessionHandler implements SessionHandlerInterface
+{
+    public int $reads = 0;
+    public function open(string $path, string $name): bool { return true; }
+    public function close(): bool { return true; }
+    public function read(string $id): string { $this->reads++; return ''; }
+    public function write(string $id, string $data): bool { return true; }
+    public function destroy(string $id): bool { return true; }
+    public function gc(int $maxLifetime): int { return 0; }
+}
+$hostHandler = new PlatformSessionHandler();
+session_set_save_handler($hostHandler, true);
 Session::start($safeSessions);
+platformExpect(session_module_name() === 'files' && $hostHandler->reads === 0, 'Explicit files mode must select the files handler, even when the host registered another handler.');
 platformExpect((string) ini_get('session.gc_maxlifetime') === '28800', 'File sessions must enforce configured idle retention.');
 platformExpect((string) ini_get('session.gc_probability') === '1', 'File sessions must enable application-owned garbage collection.');
 platformExpect((string) ini_get('session.gc_divisor') === '100', 'File session garbage collection cadence must be bounded.');
 session_write_close();
+session_id('');
+$configuredHandler = new PlatformSessionHandler();
+session_set_save_handler($configuredHandler, true);
+Session::start(platformConfig($temporary, ['SESSION_STORAGE' => 'configured']));
+platformExpect(session_module_name() === 'user' && $configuredHandler->reads > 0, 'Configured mode must preserve the host session handler.');
+session_write_close();
+session_id('');
+ini_set('session.save_handler', 'files');
 
 echo "Platform hardening tests passed.\n";

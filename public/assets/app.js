@@ -3,6 +3,9 @@
 
   const exchange = document.querySelector("[data-exchange]");
   if (exchange) {
+    window.addEventListener("hashchange", () => {
+      if (location.hash) location.reload();
+    });
     const message = exchange.querySelector("[data-exchange-message]");
     const params = new URLSearchParams(location.hash.slice(1));
     const token = params.get("token") || "";
@@ -14,26 +17,52 @@
         : "The link is incomplete. Request a new one.";
       exchange.dataset.failed = "true";
     } else {
-      fetch(exchange.dataset.endpoint, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": exchange.dataset.csrf,
-        },
-        body: JSON.stringify({ id: exchange.dataset.selector, token }),
-      })
-        .then(async (response) => {
+      const confirmationPanel = exchange.querySelector("[data-exchange-confirmation]");
+      const confirmationButton = exchange.querySelector("[data-exchange-confirm]");
+      let confirmation = "";
+      const submit = async () => {
+        confirmationButton.disabled = true;
+        try {
+          const response = await fetch(exchange.dataset.endpoint, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token": exchange.dataset.csrf,
+            },
+            body: JSON.stringify({ id: exchange.dataset.selector, token, confirmation }),
+          });
           const payload = await response.json();
           if (!response.ok || !payload.ok) throw new Error(payload.error?.message || "Link rejected");
           message.textContent = payload.data.message;
+          if (payload.code === "magic_link.confirmation_required") {
+            exchange.querySelector("[data-exchange-title]").textContent = document.documentElement.lang === "de" ? "Anmeldung bestätigen." : "Confirm your sign-in.";
+            confirmation = payload.data.confirmation;
+            exchange.querySelector("[data-exchange-identity]").textContent = payload.data.email;
+            exchange.querySelector("[data-exchange-warning]").textContent = document.documentElement.lang === "de"
+              ? (payload.data.account_switch ? "Du wechselst zu einem anderen Konto. Bestätige nur, wenn du das möchtest." : "Dieser Browser hat den Link nicht angefordert. Melde dich nur mit deiner eigenen E-Mail-Adresse an.")
+              : (payload.data.account_switch ? "You are switching accounts. Confirm only if you intend to do this." : "This browser did not request the link. Continue only with your own email address.");
+            confirmationPanel.hidden = false;
+            exchange.dataset.awaitingConfirmation = "true";
+            confirmationButton.disabled = false;
+            confirmationButton.focus();
+            return;
+          }
+          confirmationPanel.hidden = true;
+          delete exchange.dataset.awaitingConfirmation;
           exchange.dataset.confirmed = "true";
           setTimeout(() => location.replace(payload.data.redirect), 360);
-        })
-        .catch((error) => {
+        } catch (error) {
+          confirmationPanel.hidden = true;
+          delete exchange.dataset.awaitingConfirmation;
           message.textContent = error.message;
           exchange.dataset.failed = "true";
-        });
+        }
+      };
+      confirmationButton.addEventListener("click", () => {
+        if (confirmation && !confirmationButton.disabled) submit();
+      });
+      submit();
     }
   }
 

@@ -28,13 +28,15 @@ On failure, `data` is `null`; `error` contains `message` and, when relevant,
 Browser calls send cookies (`credentials: "include"`). State-changing browser
 requests copy the token from `GET /api/v1/config` into `X-CSRF-Token`. An
 optional `X-Request-ID` of 8–64 safe characters is returned in the response and
-logs; otherwise the server creates one.
+its `meta.request_id`; otherwise the server creates one. Application audit rows
+do not include this ID. Configure host logging separately if correlation is needed.
 
 1. `GET /api/v1/config`
 2. `POST /api/v1/requests` with `{ "email": "you@example.com" }`
 3. Poll `GET /api/v1/state?id=…` after `meta.poll_after_ms`
 4. The email opens `/auth/check`; that page removes the fragment from the URL and
-   consumes it through `POST /api/v1/exchange`
+   submits it through `POST /api/v1/exchange`; a different browser or account
+   switch must display and explicitly confirm the returned identity first
 5. Only the link browser receives the authenticated MagicLink session
 
 The requesting browser may observe `verified`, but it receives neither an email
@@ -58,7 +60,8 @@ Check `features.server_handoff` before offering a handoff action.
 Returns HTTP 202 with `id`, `state`, `masked_email` and `expires_at`. Allowed and
 disallowed identities have the same public response shape and queue path; only
 allowed entries are delivered. The IP, identity and global fixed-window budgets,
-plus pending-mail capacity, may return HTTP 429.
+plus fixed-expiry admission capacity, may return HTTP 429. Every accepted request
+reserves capacity until expiry, including denied, delivered and superseded links.
 
 ### `GET /api/v1/state?id=ml_…`
 
@@ -94,12 +97,28 @@ with the batch. The request requires CSRF protection.
 { "id": "ml_…", "token": "fragment-secret" }
 ```
 
-Atomically consumes the email token and rotates the session ID. The bundled
-`/auth/check` page normally calls it after removing the URL fragment. If this same
+The bundled `/auth/check` page calls it after removing the URL fragment. A link
+requested by this browser can authenticate automatically when no different
+identity is being replaced. Otherwise HTTP 202 with code
+`magic_link.confirmation_required` returns `email`, `account_switch`,
+`confirmation` and `expires_at`. This response neither consumes the link nor
+authenticates or authorizes a handoff. Show the actual email and account-switch
+warning; only after a deliberate user confirmation submit the same `id`, `token`
+and the returned `confirmation` to this endpoint with the same session and CSRF
+header. Never automatically resubmit a confirmation challenge.
+
+The challenge is single-use, valid for at most two minutes, and bound to this
+session, exact link/secret and current identity. A mismatch returns HTTP 409 with
+`magic_link.confirmation_invalid`. Reopen the original link to start again.
+Successful HTTP 200 `magic_link.verified` atomically consumes the token and
+rotates the session ID. Preview and consumption each use the exchange budgets.
+If this same
 browser previously opened an RP-created `authorize_url`, MagicLink also completes
 that pending transaction: `data.redirect` carries the authorization `code` and
 original `state` to the registered callback, while `data.handoff` reports
 `authorized`, `retryable`, or `unavailable`. The email token is never forwarded.
+
+![Bundled identity confirmation, captured locally with a disposable development identity](assets/confirmation.png)
 
 ### `GET /api/v1/session`
 

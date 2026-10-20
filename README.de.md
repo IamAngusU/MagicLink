@@ -48,7 +48,7 @@ MAGICLINK_ALLOWED_EMAILS=du@example.com
 
 Wenn möglich, zeigt der Document Root auf `public/`. Für klassisches Apache-
 Hosting ist ein Root-Fallback enthalten. Mehr steht im [Shared-Hosting-Guide](docs/SHARED-HOSTING.md)
-und im [VPS-Guide](docs/VPS.md).
+und im [VPS-Guide](docs/VPS.de.md).
 
 ## Warum MagicLink?
 
@@ -57,7 +57,7 @@ Die E-Mail ist der einfache Teil. Das Produkt sind die Fehlerfälle darum herum:
 | Das Problem | Was MagicLink übernimmt |
 | --- | --- |
 | Tokens landen in Serverlogs | Das Secret bleibt im URL-Fragment und wird nur durch einen geschützten POST verbraucht. |
-| Ein Link meldet den falschen Browser an | Request-State ist an den startenden Browser gebunden; nur der Browser mit Secret erhält eine Session. |
+| Ein fremder Link wechselt unbemerkt das Konto | Ein anderer Browser oder Kontowechsel muss die tatsächliche Identität vor der Anmeldung bestätigen. Polling allein meldet nie an. |
 | Antworten verraten vorhandene Accounts | Erlaubte und abgelehnte Identitäten durchlaufen denselben öffentlichen Pfad, dasselbe Zeitbudget und State-Modell. |
 | Mailversand bricht mitten im Request ab | Eine verschlüsselte Outbox liefert begrenzte Retries, Leases, stabile Message-IDs und explizite Endzustände. |
 | Ein Burst wird zum Ausfall | Globale, IP-, Identitäts- und Selector-Budgets arbeiten mit Queue-Backpressure und begrenzter automatischer Bereinigung. |

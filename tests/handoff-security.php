@@ -214,7 +214,7 @@ $handoffs->bind($appRequest, Session::binding());
 Session::bindHandoffRequest($appRequest);
 
 $magicLinks = new MagicLinkService($pdo, $config, $crypto);
-$magic = $magicLinks->request('owner@example.com', Session::binding(), '127.0.0.45');
+$magic = $magicLinks->request('owner@example.com', 'another-link-browser', '127.0.0.45');
 $payloadStatement = $pdo->prepare('SELECT payload_cipher FROM mail_outbox WHERE selector = ?');
 $payloadStatement->execute([$magic['selector']]);
 $mailPayload = json_decode($crypto->decrypt((string) $payloadStatement->fetchColumn()), true, 8, JSON_THROW_ON_ERROR);
@@ -253,6 +253,18 @@ $pdo->exec("CREATE TRIGGER fail_handoff_authorize BEFORE UPDATE OF status ON aut
 $exchangeResponse = handoffDispatch($app, 'POST', '/api/v1/exchange', [
     'id' => $magic['selector'],
     'token' => $magicToken,
+    '_csrf' => Session::csrf(),
+]);
+$exchangePayload = handoffJson($exchangeResponse);
+handoffExpect($exchangeResponse->status() === 202 && $exchangePayload['code'] === 'magic_link.confirmation_required', 'A foreign link must require confirmation before authorizing an RP transaction.');
+handoffExpect(Session::email() === null, 'A preview must not authenticate the pending-handoff browser.');
+$pendingStatus = $pdo->prepare('SELECT status FROM auth_handoffs WHERE request_hash = ?');
+$pendingStatus->execute([$crypto->hmac('handoff-request', $appRequest)]);
+handoffExpect($pendingStatus->fetchColumn() === 'pending', 'A preview must not authorize the pending handoff.');
+$exchangeResponse = handoffDispatch($app, 'POST', '/api/v1/exchange', [
+    'id' => $magic['selector'],
+    'token' => $magicToken,
+    'confirmation' => $exchangePayload['data']['confirmation'],
     '_csrf' => Session::csrf(),
 ]);
 $exchangePayload = handoffJson($exchangeResponse);

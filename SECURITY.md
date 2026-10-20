@@ -16,11 +16,12 @@ Run `php bin/doctor.php` after every deployment or PHP upgrade.
 - 256-bit bearer tokens generated with `random_bytes`.
 - Purpose-separated HMACs for token, email, IP, session and rate-limit keys.
 - Token secret in the URL fragment; GET never consumes a link.
-- Same-origin, CSRF-protected POST exchange.
+- CSRF-protected POST exchange restricted to the app or explicitly approved origins.
+- Explicit identity confirmation for foreign-browser links and every account switch.
 - Atomic one-time consumption with bounded replay auditing.
 - Short TTL and invalidation of older links for the same identity.
 - Per-IP, per-email and per-selector fixed-window limits.
-- Identity-independent queue-capacity rejection and deterministic retention headroom.
+- Identity-independent, fixed-expiry admission reservations and deterministic retention headroom.
 - Encrypted email storage using Sodium secretbox or AES-256-GCM.
 - Session ID rotation, idle/absolute expiry, `HttpOnly`, configurable `SameSite`
   and production `Secure` cookies; file sessions own their GC policy and health

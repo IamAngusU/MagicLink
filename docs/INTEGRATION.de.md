@@ -90,8 +90,9 @@ auf:
 ```
 
 Leite den Browser auf die gelieferte `data.authorize_url`. Diese URL nicht selbst
-zusammenbauen. Nur die S256-Challenge verlässt das RP; der Verifier bleibt mit
-dieser Transaktion auf seinem Server.
+zusammenbauen. Nur die S256-Challenge gelangt in den Browser-Kanal. Der Verifier
+bleibt in der RP-Server-Session, bis das Backend ihn an den serverseitigen
+Exchange-Endpoint von MagicLink sendet.
 
 ### 2. MagicLink im selben Browser abschließen
 

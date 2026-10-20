@@ -20,7 +20,11 @@ fresh database receives a barrier-synchronised burst from four PHP processes,
 ranges, peak memory, parameters, and SQLite query plans. Counts are configurable
 with the script's named options.
 
-## Measured local baseline
+## Historical local baseline (0.4.2)
+
+These measurements precede 0.4.3's fixed-expiry admission reservations and
+expired-mail retirement query. They do not measure the current request path;
+rerun the script on the deployed revision before using them for capacity planning.
 
 Measured 2026-10-08 on Windows 11 10.0.26200, an Intel Core i9-12900K and a local
 WD_BLACK SN850X NVMe drive, using PHP 8.4.21, Sodium, SQLite 3.51.3 and schema
@@ -46,11 +50,10 @@ the parent process was 2 MiB [2–2] in all runs.
 
 ## Query-plan check
 
-`EXPLAIN QUERY PLAN` on the same populated schema confirmed that the active-queue
-count uses a covering `status` index (`idx_mail_outbox_retention`), while handoff
-lookups use the unique indexes on `code_hash` and `request_hash`. The
-benchmark emits the exact plan text so an upgrade can reveal a regression rather
-than relying on this prose.
+The current benchmark emits `EXPLAIN QUERY PLAN` for the fixed-expiry reservation
+count, expired-mail retirement and both handoff lookups. The reservation range
+has the `idx_magic_links_expiry` index; handoff lookups have unique indexes on
+`code_hash` and `request_hash`. Inspect the emitted plan on the actual schema.
 
 ## What these numbers do not claim
 

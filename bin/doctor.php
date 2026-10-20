@@ -41,12 +41,14 @@ try {
     $kernel = IamAngusU\MagicLink\Kernel::boot($root);
     $config->appKey();
     $pending = (int) $kernel->database->pdo()->query("SELECT COUNT(*) FROM mail_outbox WHERE status = 'pending'")->fetchColumn();
+    $reservations = $kernel->database->pdo()->prepare('SELECT COUNT(*) FROM magic_links WHERE expires_at > ?');
+    $reservations->execute([time()]);
     echo "[ok]   database migration and app key\n";
     echo sprintf("[info] session storage=%s, handler=%s\n", $sessionStorage, (string) ini_get('session.save_handler'));
     if ($sessionStorage === 'files') {
         echo sprintf("[info] session GC lifetime=%ss, probability=%s/%s\n", (string) ini_get('session.gc_maxlifetime'), (string) ini_get('session.gc_probability'), (string) ini_get('session.gc_divisor'));
     }
-    echo sprintf("[info] queue pending=%d/%d, worker batch=%d, state batch=%d, maintenance batch=%d\n", $pending, $kernel->tuning->pendingMailMax(), $kernel->tuning->workerBatch(), $kernel->tuning->stateBatchMax(), $kernel->tuning->maintenanceBatch());
+    echo sprintf("[info] request reservations=%d/%d, queue pending=%d, worker batch=%d, state batch=%d, maintenance batch=%d\n", (int) $reservations->fetchColumn(), $kernel->tuning->pendingMailMax(), $pending, $kernel->tuning->workerBatch(), $kernel->tuning->stateBatchMax(), $kernel->tuning->maintenanceBatch());
     if (!$config->bool('MAIL_AUTO_DISPATCH', true)) {
         echo "[info] MAIL_AUTO_DISPATCH is off; run bin/worker.php from cron or a service.\n";
     }
